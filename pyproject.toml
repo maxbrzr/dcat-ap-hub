@@ -1,0 +1,18 @@
+[project]
+name = "dcat-ap-hub"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "maxbrzr", email = "maximilian.burzer@kit.edu" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "ipykernel>=6.30.0",
+    "rdflib>=7.1.4",
+    "types-requests>=2.32.4.20250611",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
