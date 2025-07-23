@@ -19,3 +19,8 @@ path, parse = download(
     base_dir="./datasets"
 )
 ```
+
+### TODOs
+
+- add default parsers (e.g. using pandas)
+- make import of parser safe
