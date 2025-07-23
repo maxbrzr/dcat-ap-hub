@@ -24,3 +24,4 @@ path, parse = download(
 
 - add default parsers (e.g. using pandas)
 - make import of parser safe
+- make comptible with piveau (handles)
