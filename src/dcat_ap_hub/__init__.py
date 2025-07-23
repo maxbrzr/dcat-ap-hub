@@ -1,2 +1,3 @@
-def hello() -> str:
-    return "Hello from dcat-ap-hub!"
+from dcat_ap_hub.download import download
+
+__all__ = ["download"]
