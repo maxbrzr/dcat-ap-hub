@@ -7,12 +7,9 @@ This library provides easy data handling based on metadata in DCAT-AP format.
 ```python
 from dcat_ap_hub import download
 
-dataset_metadata_handle = "http://dataset_metadata.jsonld"
-parser_metadata_handle = "http://parser_metadata.jsonld"
-
 path, parse = download(
-    dataset_metadata, 
-    parser_metadata_handle, 
+    dataset_metadata_handle="http://dataset_metadata.jsonld"
+    parser_metadata_handle="http://parser_metadata.jsonld"
     base_dir="./datasets"
 )
 ```
