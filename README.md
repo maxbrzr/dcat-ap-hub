@@ -2,6 +2,12 @@
 
 This library provides easy data handling based on metadata in DCAT-AP format.
 
+### How To Install
+
+```bash
+pip install git+https://github.com/maxbrzr/dcat-ap-hub.git
+```
+
 ### How To Use
 
 ```python
