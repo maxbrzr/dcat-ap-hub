@@ -1,0 +1,16 @@
+# Ignore mypy cache
+.mypy_cache/
+**/.mypy_cache/
+
+# Ignore Python bytecode cache
+__pycache__/
+**/__pycache__/
+
+# Ignore virtual environments
+venv/
+**/venv/
+
+# Ignore datasets directory
+datasets/
+**/datasets/
+

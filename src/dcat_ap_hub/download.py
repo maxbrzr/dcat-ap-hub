@@ -1,112 +1,199 @@
-import os
-from typing import Any, Callable, Optional, Tuple
-from urllib import request
 import json
-import requests  # type: ignore
+import os
 import shutil
 import zipfile
 import tarfile
+from pathlib import Path
+from typing import Any, Callable, Optional, Tuple
+from urllib import request
 from importlib.util import spec_from_file_location, module_from_spec
 
-
-def download_metadata(json_ld_handle: str) -> dict:
-    assert json_ld_handle.split(".")[-1] == "jsonld"
-
-    with request.urlopen(json_ld_handle) as response:
-        data = json.load(response)
-
-    return data
+import requests
+from tqdm import tqdm
 
 
-def download_dataset(download_url: str, dir: str) -> str:
-    # check cache
-    if os.path.exists(dir):
-        return dir
+def download_metadata(json_ld_handle: str) -> dict[str, Any]:
+    """
+    Downloads and parses a JSON-LD metadata file.
+    """
+    if not json_ld_handle.endswith(".jsonld"):
+        raise ValueError(f"Expected a .jsonld file, got: {json_ld_handle}")
 
-    # create directory
-    os.makedirs(dir, exist_ok=True)
-
-    # get filename from url
-    filename = download_url.split("/")[-1]
-    filepath = os.path.join(dir, filename)
-
-    # download the file
-    with requests.get(download_url, stream=True) as r:
-        r.raise_for_status()
-        with open(filepath, "wb") as f:
-            shutil.copyfileobj(r.raw, f)
-
-    # extract if archive
-    if filename.endswith(".zip"):
-        with zipfile.ZipFile(filepath, "r") as zip_ref:
-            zip_ref.extractall(dir)
-        os.remove(filepath)
-    elif filename.endswith(".tar.gz") or filename.endswith(".tgz"):
-        with tarfile.open(filepath, "r:gz") as tar_ref:
-            tar_ref.extractall(dir)
-        os.remove(filepath)
-
-    return dir
+    try:
+        with request.urlopen(json_ld_handle) as response:
+            return json.load(response)
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to download or parse metadata from {json_ld_handle}"
+        ) from e
 
 
-def download_parser(download_url: str, dir: str) -> Callable[[str], Any]:
-    parser_path = os.path.join(dir, "parser.py")
-
-    # Check cache
-    if not os.path.exists(parser_path):
-        # Create directory
-        os.makedirs(dir, exist_ok=True)
-
-        # Download zip
-        zip_path = os.path.join(dir, "parser.zip")
-        with requests.get(download_url, stream=True) as r:
+def download_file(url: str, dest_path: Path) -> None:
+    """
+    Downloads a file from a URL to a destination path.
+    """
+    try:
+        with requests.get(url, stream=True) as r:
             r.raise_for_status()
-            with open(zip_path, "wb") as f:
+            with open(dest_path, "wb") as f:
                 shutil.copyfileobj(r.raw, f)
+    except Exception as e:
+        raise RuntimeError(f"Failed to download file from {url}") from e
 
-        # Extract parser.py from zip
-        with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            zip_ref.extractall(dir)
-        os.remove(zip_path)
 
-    # Dynamically import parser.py
+def download_file_with_progress(
+    url: str, dest_path: Path, chunk_size: int = 8192
+) -> None:
+    """
+    Downloads a file with a progress bar.
+    """
+    try:
+        with requests.get(url, stream=True) as r:
+            r.raise_for_status()
+            total = int(r.headers.get("content-length", 0))
+            with (
+                open(dest_path, "wb") as f,
+                tqdm(
+                    total=total,
+                    unit="B",
+                    unit_scale=True,
+                    desc=f"Downloading {dest_path.name}",
+                ) as pbar,
+            ):
+                for chunk in r.iter_content(chunk_size=chunk_size):
+                    f.write(chunk)
+                    pbar.update(len(chunk))
+    except Exception as e:
+        raise RuntimeError(f"Failed to download file from {url}") from e
+
+
+def extract_archive(filepath: Path, target_dir: Path) -> None:
+    """
+    Recursively extracts .zip, .tar.gz, or .tgz files, including nested archives.
+    """
+
+    def is_archive(file: Path) -> bool:
+        return (
+            file.suffix == ".zip"
+            or file.suffixes[-2:] in [[".tar", ".gz"]]
+            or file.suffix == ".tgz"
+        )
+
+    def extract_one(file: Path, extract_to: Path) -> None:
+        if file.suffix == ".zip":
+            with zipfile.ZipFile(file, "r") as zip_ref:
+                zip_ref.extractall(extract_to)
+        elif file.suffixes[-2:] in [[".tar", ".gz"]] or file.suffix == ".tgz":
+            with tarfile.open(file, "r:gz") as tar_ref:
+                tar_ref.extractall(extract_to)
+        else:
+            raise ValueError(f"Unsupported archive format: {file.name}")
+        file.unlink()  # remove archive after extraction
+
+    try:
+        queue = [(filepath, target_dir)]
+
+        while queue:
+            archive_path, dest_dir = queue.pop(0)
+
+            extract_one(archive_path, dest_dir)
+
+            # Scan for newly extracted archives
+            for root, _, files in os.walk(dest_dir):
+                for name in files:
+                    path = Path(root) / name
+                    if is_archive(path):
+                        queue.append((path, Path(root)))
+
+    except Exception as e:
+        raise RuntimeError(f"Failed to extract archive: {filepath}") from e
+
+
+def download_dataset(download_url: str, output_dir: Path) -> Path:
+    """
+    Downloads and extracts a dataset to the specified directory.
+    """
+    if output_dir.exists():
+        return output_dir
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = download_url.split("/")[-1]
+    filepath = output_dir / filename
+
+    download_file_with_progress(download_url, filepath)
+
+    if filepath.suffix in [".zip", ".tgz", ".gz"] or filepath.name.endswith(".tar.gz"):
+        extract_archive(filepath, output_dir)
+
+    return output_dir
+
+
+def download_parser(download_url: str, output_dir: Path) -> Callable[[str], Any]:
+    """
+    Downloads and dynamically loads a parser.py from a zip archive.
+    """
+    parser_path = output_dir / "parser.py"
+    if not parser_path.exists():
+        output_dir.mkdir(parents=True, exist_ok=True)
+        zip_path = output_dir / "parser.zip"
+
+        download_file_with_progress(download_url, zip_path)
+        extract_archive(zip_path, output_dir)
+
+    # Dynamically load parser.py
     spec = spec_from_file_location("parser_module", parser_path)
-    assert spec is not None
+    if spec is None or spec.loader is None:
+        raise ImportError("Failed to load parser module.")
 
     module = module_from_spec(spec)
+    spec.loader.exec_module(module)
 
-    loader = spec.loader
-    assert loader is not None
-    loader.exec_module(module)
+    if not hasattr(module, "parse"):
+        raise AttributeError("Parser module must define a 'parse' function.")
 
-    # Return the parse function
     return module.parse
 
 
 def download(
-    dir: str, dataset_metadata_handle: str, parser_metadata_handle: Optional[str]
-) -> Tuple[str, Optional[Callable[[str], Any]]]:
+    dataset_metadata_handle: str,
+    parser_metadata_handle: Optional[str] = None,
+    base_dir: str = "./datasets",
+) -> Tuple[Path, Optional[Callable[[str], Any]]]:
+    """
+    Downloads dataset and optionally a parser using JSON-LD metadata.
+    Returns:
+        - Dataset path
+        - Parser function (or None)
+    """
+    base_path = Path(base_dir)
+    base_path.mkdir(parents=True, exist_ok=True)
+
     dataset_metadata = download_metadata(dataset_metadata_handle)
-    dataset_title = dataset_metadata["dct:title"]
-    dataset_download_url = dataset_metadata["dcat:downloadURL"]["@id"]
+    dataset_title = dataset_metadata.get("dct:title")
+    dataset_download_url = dataset_metadata.get("dcat:downloadURL", {}).get("@id")
 
-    assert dataset_title is not None
-    assert dataset_download_url is not None
+    if not dataset_title or not dataset_download_url:
+        raise KeyError(
+            "Dataset metadata missing required fields: 'dct:title' or 'dcat:downloadURL.@id'"
+        )
 
-    dataset_dir = os.path.join(dir, dataset_title)
+    dataset_dir = base_path / dataset_title
     dataset_path = download_dataset(dataset_download_url, dataset_dir)
 
-    if parser_metadata_handle is None:
+    if not parser_metadata_handle:
         return dataset_path, None
 
     parser_metadata = download_metadata(parser_metadata_handle)
-    parser_title = parser_metadata["dct:title"]
-    parser_download_url = parser_metadata["dcat:downloadURL"]["@id"]
+    parser_title = parser_metadata.get("dct:title")
+    parser_download_url = parser_metadata.get("dcat:downloadURL", {}).get("@id")
 
-    assert parser_title is not None
-    assert parser_download_url is not None
+    if not parser_title or not parser_download_url:
+        raise KeyError(
+            "Parser metadata missing required fields: 'dct:title' or 'dcat:downloadURL.@id'"
+        )
 
-    parser_dir = os.path.join(dir, parser_title)
+    parser_dir = base_path / parser_title
     parse = download_parser(parser_download_url, parser_dir)
 
     return dataset_path, parse
