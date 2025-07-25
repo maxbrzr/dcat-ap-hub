@@ -91,27 +91,7 @@ def extract_archive(filepath: Path, target_dir: Path) -> None:
         raise RuntimeError(f"Failed to extract archive: {filepath}") from e
 
 
-def download_data(download_url: str, output_dir: Path) -> Path:
-    """
-    Downloads and extracts a dataset to the specified directory.
-    """
-    if output_dir.exists():
-        return output_dir
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    filename = download_url.split("/")[-1]
-    filepath = output_dir / filename
-
-    download_file_with_progress(download_url, filepath)
-
-    if filepath.suffix in [".zip", ".tgz", ".gz"] or filepath.name.endswith(".tar.gz"):
-        extract_archive(filepath, output_dir)
-
-    return output_dir
-
-
-def download(json_ld_handle: str, base_dir: Path = Path("./datasets")) -> dict:
+def download_data(json_ld_handle: str, base_dir: Path = Path("./datasets")) -> dict:
     """
     Downloads dataset and optionally a parser using JSON-LD metadata.
     Returns:
@@ -125,6 +105,17 @@ def download(json_ld_handle: str, base_dir: Path = Path("./datasets")) -> dict:
     data_download_url = get_data_download_url(metadata)
     dataset_dir = get_dataset_dir(metadata, base_path)
 
-    download_data(data_download_url, dataset_dir)
+    if dataset_dir.exists():
+        return metadata
+
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = data_download_url.split("/")[-1]
+    filepath = dataset_dir / filename
+
+    download_file_with_progress(data_download_url, filepath)
+
+    if filepath.suffix in [".zip", ".tgz", ".gz"] or filepath.name.endswith(".tar.gz"):
+        extract_archive(filepath, dataset_dir)
 
     return metadata
