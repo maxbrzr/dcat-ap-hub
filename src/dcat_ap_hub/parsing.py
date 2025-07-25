@@ -12,6 +12,11 @@ def apply_parsing(metadata: dict, base_dir: Path = Path("./datasets")) -> dict:
     dataset_dir = get_dataset_dir(metadata, base_dir)
     parser_download_url = get_parser_download_url(metadata)
 
+    if parser_download_url is None:
+        raise ValueError(
+            f"Metadata for {dataset_title} does not include a parser download URL"
+        )
+
     package_name = f"{dataset_title}_parser"
 
     try:
