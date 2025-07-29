@@ -1,10 +1,26 @@
 import importlib
+import os
 from pathlib import Path
+import pandas as pd
 from dcat_ap_hub.metadata import (
     get_dataset_dir,
     get_dataset_title,
     get_parser_download_url,
 )
+
+
+def parse_with_pandas(metadata: dict, base_dir: Path = Path("./datasets")) -> dict:
+    dataset_dir = get_dataset_dir(metadata, base_dir)
+
+    # for each file in dir and subdirs, read with pandas and place into dict with filename as key
+    dataset = {}
+    for dirpath, _, filenames in os.walk(dataset_dir):
+        for filename in filenames:
+            filepath = os.path.join(dirpath, filename)
+            rel_path = os.path.relpath(filepath, dataset_dir)
+            dataset[rel_path] = pd.read_csv(filepath)
+
+    return dataset
 
 
 def apply_parsing(metadata: dict, base_dir: Path = Path("./datasets")) -> dict:
