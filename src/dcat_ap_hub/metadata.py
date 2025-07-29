@@ -8,11 +8,15 @@ def fetch_metadata(json_ld_handle: str) -> dict:
     """
     Fetches and parses a JSON-LD metadata file.
     """
-    if not json_ld_handle.endswith(".jsonld"):
-        raise ValueError(f"Expected a .jsonld file, got: {json_ld_handle}")
 
     try:
         with request.urlopen(json_ld_handle) as response:
+            content_type = response.headers.get("Content-Type", "")
+            if not content_type.startswith("application/ld+json"):
+                raise ValueError(
+                    f"Invalid MIME type: {content_type}. Expected application/ld+json."
+                )
+
             metadata = json.load(response)
     except Exception as e:
         raise RuntimeError(

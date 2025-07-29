@@ -106,6 +106,7 @@ def download_data(json_ld_handle: str, base_dir: Path = Path("./datasets")) -> d
     dataset_dir = get_dataset_dir(metadata, base_path)
 
     if dataset_dir.exists():
+        print(f"Dataset {dataset_dir} already exists. Skipping download.")
         return metadata
 
     dataset_dir.mkdir(parents=True, exist_ok=True)
@@ -113,6 +114,7 @@ def download_data(json_ld_handle: str, base_dir: Path = Path("./datasets")) -> d
     filename = data_download_url.split("/")[-1]
     filepath = dataset_dir / filename
 
+    print(f"Downloading {data_download_url} to {filepath}")
     download_file_with_progress(data_download_url, filepath)
 
     if filepath.suffix in [".zip", ".tgz", ".gz"] or filepath.name.endswith(".tar.gz"):
