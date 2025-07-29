@@ -1,0 +1,9 @@
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+
+<https://example.io/id/catalogue/har>
+    a dcat:Catalog ;
+    dct:type "dcat-ap";
+    dct:title "Human Activity Recognition (HAR)"@en ;
+    dct:description "A Collection of Human Activity Recognition (HAR) datasets."@en ;
+    dct:language  <http://publications.europa.eu/resource/authority/language/ENG> ;
