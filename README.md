@@ -8,7 +8,7 @@ This library provides easy data handling based on metadata in DCAT-AP format.
 pip install git+https://github.com/maxbrzr/dcat-ap-hub.git
 ```
 
-### How To Use
+### With Custom Parsing
 
 ```python
 from dcat_ap_hub import download_data, apply_parsing
@@ -18,6 +18,12 @@ metadata = download_data(json_ld_metadata)
 df = apply_parsing(metadata)
 ```
 
-### TODOs
+### With Default Pandas Parsing
 
-- add default parsers (e.g. using pandas)
+```python
+from dcat_ap_hub import download_data, parse_with_pandas
+
+json_ld_metadata = "http://localhost:8081/datasets/uci-har.jsonld"
+metadata = download_data(json_ld_metadata)
+df = parse_with_pandas(metadata)
+```
