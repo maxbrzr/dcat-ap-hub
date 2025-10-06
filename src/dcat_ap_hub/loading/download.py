@@ -7,7 +7,11 @@ from pathlib import Path
 import requests
 from tqdm import tqdm
 
-from dcat_ap_hub.metadata import fetch_metadata, get_data_download_url, get_dataset_dir
+from dcat_ap_hub.loading.metadata import (
+    fetch_metadata,
+    get_data_download_url,
+    get_dataset_dir,
+)
 
 
 def download_file(url: str, dest_path: Path) -> None:
