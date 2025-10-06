@@ -2,7 +2,7 @@ import importlib
 import os
 from pathlib import Path
 import pandas as pd
-from dcat_ap_hub.loading.metadata import (
+from dcat_ap_hub.parsing.metadata import (
     get_dataset_dir,
     get_dataset_title,
     get_parser_download_url,
