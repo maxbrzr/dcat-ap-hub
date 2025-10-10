@@ -1,6 +1,6 @@
 # DCAT-AP Hub
 
-This library provides easy data handling based on metadata in DCAT-AP format. Currently only JSON-LD is supported.
+This library enables easy downloading and loading of datasets whose metadata is provided in the DCAT-AP format. Currently, only JSON-LD is supported.
 
 ### How To Install
 
@@ -11,13 +11,17 @@ pip install git+https://github.com/maxbrzr/dcat-ap-hub.git
 ### How To Download & Load Data
 
 ```python
-from dcat_ap_hub import download_data, load_data, FileType
+from dcat_ap_hub import download_data, load_data
 
 url = "https://ki-daten.hlrs.de/hub/repo/datasets/dcc5faea-10fd-430b-944b-4ac03383ca9f~~1.jsonld"
 
 dataset_dir = download_data(url, base_dir="../datasets")
 data = load_data(dataset_dir, summarize=True, lazy=True)
 ```
+
+### Funding
+
+This project is funded by the European High Performance Computing Joint Undertaking under Grant Agreement No. 101234027.
 
 <!-- ### With Custom Parsing
 
