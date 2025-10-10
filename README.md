@@ -4,8 +4,12 @@ This library enables easy downloading and loading of datasets whose metadata is 
 
 ### How To Install
 
-```bash
+<!-- ```bash
 pip install git+https://github.com/maxbrzr/dcat-ap-hub.git
+``` -->
+
+```bash
+pip install dcat-ap-hub
 ```
 
 ### How To Download & Load Data
