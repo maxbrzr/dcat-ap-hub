@@ -7,16 +7,18 @@ import mimetypes
 import requests
 from tqdm import tqdm
 
-from dcat_ap_hub.loading.metadata import (
-    fetch_metadata,
-    get_dataset_dir,
-    parse_metadata,
-)
+from dcat_ap_hub.loading.metadata import Dataset, get_metadata
 
 
 # -------------------------------
 # Download helpers
 # -------------------------------
+
+
+def get_dataset_dir(dataset: Dataset, base_dir: Path) -> Path:
+    base_path = Path(base_dir)
+    dataset_dir = base_path / dataset.title
+    return dataset_dir
 
 
 def download_file_with_mime(url: str, dest_path: Path, chunk_size: int = 8192) -> Path:
@@ -116,8 +118,7 @@ def download_data(url: str, base_dir: Path | str = Path("./datasets")) -> Path:
     base_dir = Path(base_dir) if isinstance(base_dir, str) else base_dir
     base_dir.mkdir(parents=True, exist_ok=True)
 
-    metadata = fetch_metadata(url)
-    dataset, distros = parse_metadata(metadata)
+    dataset, distros = get_metadata(url)
     dataset_dir = get_dataset_dir(dataset, base_dir)
 
     if dataset_dir.exists():

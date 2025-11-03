@@ -12,7 +12,7 @@ pip install git+https://github.com/maxbrzr/dcat-ap-hub.git
 pip install dcat-ap-hub
 ```
 
-### How To Download & Load Data
+### How To Load Datasets
 
 ```python
 from dcat_ap_hub import download_data, load_data
@@ -21,6 +21,15 @@ url = "https://ki-daten.hlrs.de/hub/repo/datasets/dcc5faea-10fd-430b-944b-4ac033
 
 dataset_dir = download_data(url, base_dir="../datasets")
 data = load_data(dataset_dir, summarize=True, lazy=True)
+```
+
+### How To Load Huggingface Models
+
+```python
+from dcat_ap_hub import load_hf_model
+
+url = "https://ki-daten.hlrs.de/hub/repo/datasets/6f75de8b60a9f8a2fdf7b69cbd86d9e64bcb3837.jsonld"
+model, processor, metadata = load_hf_model(url)
 ```
 
 ### Funding
