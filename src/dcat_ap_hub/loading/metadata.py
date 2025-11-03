@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 import json
-from pathlib import Path
 from typing import List, Tuple
 from urllib import request
 
@@ -18,6 +17,7 @@ class Distribution:
 class Dataset:
     title: str
     description: str
+    is_model: bool = False
 
 
 def fetch_metadata(url: str) -> dict:
@@ -48,32 +48,62 @@ def parse_metadata(metadata: dict) -> Tuple[Dataset, List[Distribution]]:
 
     for entry in entries:
         try:
-            if entry["@type"] == "dcat:Distribution":
+            entry_type = entry.get("@type")
+
+            if isinstance(entry_type, str):
+                types = [entry_type]
+            elif isinstance(entry_type, list):
+                types = entry_type
+            else:
+                types = []
+
+            if "dcat:Dataset" in types:
+                dataset = Dataset(
+                    title=extract_lang_value(entry["dct:title"]),
+                    description=extract_lang_value(entry["dct:description"]),
+                    is_model=True
+                    if "http://www.w3.org/ns/mls#Model" in types
+                    else False,
+                )
+
+            if "dcat:Distribution" in types:
                 distros.append(
                     Distribution(
-                        title=entry["dct:title"],
-                        description=entry["dct:description"],
+                        title=extract_lang_value(entry["dct:title"]),
+                        description=extract_lang_value(entry["dct:description"]),
                         format=entry["dct:format"],
                         access_url=entry["dcat:accessURL"]["@id"],
                     )
                 )
-            elif entry["@type"] == "dcat:Dataset":
-                dataset = Dataset(
-                    title=entry["dct:title"],
-                    description=entry["dct:description"],
-                )
+
         except KeyError:
-            print(entry["dct:title"])
+            print(extract_lang_value(entry["dct:title"]))
 
     assert dataset is not None
 
     return dataset, distros
 
 
-def get_dataset_dir(dataset: Dataset, base_dir: Path) -> Path:
-    base_path = Path(base_dir)
-    dataset_dir = base_path / dataset.title
-    return dataset_dir
+def extract_lang_value(field: str | List[dict] | dict, lang: str = "en") -> str:
+    """Extract the English value from a multilingual field if available."""
+    if isinstance(field, str):
+        return field
+    if isinstance(field, list):
+        for item in field:
+            if isinstance(item, dict) and item.get("@language") == lang:
+                return item.get("@value", "")
+        # fallback: first item’s value
+        if field and isinstance(field[0], dict):
+            return field[0].get("@value", "")
+    if isinstance(field, dict):
+        return field.get("@value", "")
+    return ""
+
+
+def get_metadata(url: str) -> Tuple[Dataset, List[Distribution]]:
+    metadata = fetch_metadata(url)
+    dataset, distros = parse_metadata(metadata)
+    return dataset, distros
 
 
 if __name__ == "__main__":

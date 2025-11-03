@@ -87,7 +87,7 @@ class FileType(Enum):
 
 LoadFunc: TypeAlias = Callable[[Path], Any]
 
-FileTypeToParseMap: Dict[FileType, LoadFunc] = {
+FileTypeToLoadFunc: Dict[FileType, LoadFunc] = {
     FileType.PDF: load_pdf,
     FileType.HTML: load_html,
     FileType.XML: load_xml,
@@ -199,7 +199,7 @@ def load_data(
         if file_types and filetype not in file_types:
             return
 
-        loader = FileTypeToParseMap.get(filetype)
+        loader = FileTypeToLoadFunc.get(filetype)
         if not loader:
             print(f"No loader defined for: {filetype}")
             return
