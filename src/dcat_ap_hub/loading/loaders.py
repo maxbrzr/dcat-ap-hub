@@ -11,6 +11,8 @@ from typing import Any, Dict, TypeAlias, Callable
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from dcat_ap_hub.logging import logger
+
 
 # ============================================================
 # === 1. Individual File Loaders =============================
@@ -146,11 +148,10 @@ class LoadedFiles(dict[str, LoadedFile]):
     """Container for multiple LoadedFile objects with convenience methods."""
 
     def summary(self) -> None:
-        print("\nLoaded Files Summary\n" + "-" * 80)
-        print(f"{'Path':<40} | {'Type':<8} | {'Data Type':<12} | {'Size':>10}")
-        print("-" * 80)
+        logger.info(f"{'Path':<40} | {'Type':<8} | {'Data Type':<12} | {'Size':>10}")
+        logger.info("-" * 80)
         for lf in self.values():
-            print(lf.summary())
+            logger.info(lf.summary())
 
     def get_errors(self) -> list[LoadedFile]:
         return [lf for lf in self.values() if lf.error]
@@ -179,7 +180,7 @@ def load_data(
     Args:
         path: Directory or single file to load.
         file_types: Optional list of file types to restrict loading.
-        summarize: If True, print a summary table of loaded files.
+        summarize: If True, logger.info a summary table of loaded files.
         lazy: If True, defer file parsing until first data access.
 
     Returns:
@@ -193,7 +194,7 @@ def load_data(
         try:
             filetype = FileType(ext)
         except ValueError:
-            print(f"Skipping unsupported file: {file_path.name}")
+            logger.info(f"Skipping unsupported file: {file_path.name}")
             return
 
         if file_types and filetype not in file_types:
@@ -201,7 +202,7 @@ def load_data(
 
         loader = FileTypeToLoadFunc.get(filetype)
         if not loader:
-            print(f"No loader defined for: {filetype}")
+            logger.info(f"No loader defined for: {filetype}")
             return
 
         stat = file_path.stat()

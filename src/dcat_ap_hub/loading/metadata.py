@@ -3,6 +3,8 @@ import json
 from typing import List, Tuple
 from urllib import request
 
+from dcat_ap_hub.logging import logger
+
 
 @dataclass
 class Distribution:
@@ -27,11 +29,11 @@ def fetch_metadata(url: str, verbose: bool = False) -> dict:
 
     try:
         if verbose:
-            print(f"[metadata] Fetching URL: {url}")
+            logger.info(f"[metadata] Fetching URL: {url}")
         with request.urlopen(url) as response:
             content_type = response.headers.get("Content-Type", "")
             if verbose:
-                print(f"[metadata] Content-Type: {content_type}")
+                logger.info(f"[metadata] Content-Type: {content_type}")
             if not content_type.startswith("application/ld+json"):
                 raise ValueError(
                     f"Invalid MIME type: {content_type}. Expected application/ld+json."
@@ -39,11 +41,41 @@ def fetch_metadata(url: str, verbose: bool = False) -> dict:
 
             metadata = json.load(response)
             if verbose:
-                print(f"[metadata] Downloaded bytes: {response.length or 'unknown'}")
+                logger.info(
+                    f"[metadata] Downloaded bytes: {response.length or 'unknown'}"
+                )
     except Exception as e:
         raise RuntimeError(f"Failed to download or parse metadata from {url}") from e
 
     return metadata
+
+
+def extract_value(field) -> str:
+    """Extract @id if present, otherwise return the value directly."""
+    if isinstance(field, dict):
+        if "@id" in field:
+            return field["@id"]
+        if "@value" in field:
+            return field["@value"]
+    if isinstance(field, str):
+        return field
+    return ""
+
+
+def extract_lang_value(field: str | List[dict] | dict, lang: str = "en") -> str:
+    """Extract the English value from a multilingual field if available."""
+    if isinstance(field, str):
+        return field
+    if isinstance(field, list):
+        for item in field:
+            if isinstance(item, dict) and lang in item.get("@language", ""):
+                return extract_value(item)
+        # fallback: first item's value
+        if field and isinstance(field[0], dict):
+            return extract_value(field[0])
+    if isinstance(field, dict):
+        return extract_value(field)
+    return ""
 
 
 def parse_metadata(
@@ -66,7 +98,7 @@ def parse_metadata(
                 types = []
 
             if verbose:
-                print(f"[parse_metadata] Entry {idx} types: {types}")
+                logger.info(f"[parse_metadata] Entry {idx} types: {types}")
 
             if "dcat:Dataset" in types:
                 dataset = Dataset(
@@ -77,7 +109,7 @@ def parse_metadata(
                     else False,
                 )
                 if verbose:
-                    print(
+                    logger.info(
                         f"[parse_metadata] Dataset detected: title='{dataset.title}', is_model={dataset.is_model}"
                     )
 
@@ -85,44 +117,30 @@ def parse_metadata(
                 distro = Distribution(
                     title=extract_lang_value(entry.get("dct:title", "")),
                     description=extract_lang_value(entry.get("dct:description", "")),
-                    format=entry.get("dct:format", ""),
-                    access_url=entry.get("dcat:accessURL", {}).get("@id", ""),
+                    format=extract_value(entry.get("dct:format", "")),
+                    access_url=extract_value(entry.get("dcat:accessURL", "")),
                 )
                 distros.append(distro)
                 if verbose:
-                    print(
+                    logger.info(
                         f"[parse_metadata] Distribution added: title='{distro.title}', format='{distro.format}', access_url='{distro.access_url}'"
                     )
 
         except KeyError:
             # Safe access in error path
-            print(extract_lang_value(entry.get("dct:title", "")))
+            logger.info(extract_lang_value(entry.get("dct:title", "")))
             if verbose:
-                print("[parse_metadata] KeyError encountered; skipping entry safely.")
+                logger.info(
+                    "[parse_metadata] KeyError encountered; skipping entry safely."
+                )
     assert dataset is not None
 
     if verbose:
-        print(
+        logger.info(
             f"[parse_metadata] Parsed dataset title: {dataset.title if dataset else 'None'}"
         )
-        print(f"[parse_metadata] Total distributions: {len(distros)}")
+        logger.info(f"[parse_metadata] Total distributions: {len(distros)}")
     return dataset, distros
-
-
-def extract_lang_value(field: str | List[dict] | dict, lang: str = "en") -> str:
-    """Extract the English value from a multilingual field if available."""
-    if isinstance(field, str):
-        return field
-    if isinstance(field, list):
-        for item in field:
-            if isinstance(item, dict) and item.get("@language") == lang:
-                return item.get("@value", "")
-        # fallback: first item’s value
-        if field and isinstance(field[0], dict):
-            return field[0].get("@value", "")
-    if isinstance(field, dict):
-        return field.get("@value", "")
-    return ""
 
 
 def get_metadata(url: str, verbose: bool = False) -> Tuple[Dataset, List[Distribution]]:

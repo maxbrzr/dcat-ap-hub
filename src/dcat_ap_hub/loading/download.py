@@ -8,6 +8,7 @@ import requests
 from tqdm import tqdm
 
 from dcat_ap_hub.loading.metadata import Dataset, get_metadata
+from dcat_ap_hub.logging import logger
 
 
 # -------------------------------
@@ -30,29 +31,33 @@ def download_file_with_mime(
     """
     try:
         if verbose:
-            print(f"[download] Starting download: url='{url}', base_path='{dest_path}'")
+            logger.info(
+                f"[download] Starting download: url='{url}', base_path='{dest_path}'"
+            )
         with requests.get(url, stream=True) as r:
             r.raise_for_status()
             content_type = r.headers.get("Content-Type")
             if verbose:
-                print(f"[download] Content-Type header: {content_type}")
+                logger.info(f"[download] Content-Type header: {content_type}")
             ext = None
             if content_type:
                 ext = mimetypes.guess_extension(content_type.split(";")[0])
                 if verbose:
-                    print(f"[download] Guessed extension from MIME: {ext}")
+                    logger.info(f"[download] Guessed extension from MIME: {ext}")
             if not ext and dest_path.suffix:
                 ext = dest_path.suffix
                 if verbose:
-                    print(f"[download] Fallback extension from path suffix: {ext}")
+                    logger.info(
+                        f"[download] Fallback extension from path suffix: {ext}"
+                    )
             if ext and not dest_path.suffix == ext:
                 if verbose:
-                    print(f"[download] Applying extension: {ext}")
+                    logger.info(f"[download] Applying extension: {ext}")
                 dest_path = dest_path.with_suffix(ext)
 
             total = int(r.headers.get("content-length", 0))
             if verbose:
-                print(f"[download] Content-Length: {total} bytes")
+                logger.info(f"[download] Content-Length: {total} bytes")
             with (
                 open(dest_path, "wb") as f,
                 tqdm(
@@ -68,7 +73,7 @@ def download_file_with_mime(
                     pbar.update(len(chunk))
         if verbose:
             size = dest_path.stat().st_size if dest_path.exists() else 0
-            print(f"[download] Finished: saved='{dest_path}', size={size} bytes")
+            logger.info(f"[download] Finished: saved='{dest_path}', size={size} bytes")
         return dest_path
     except Exception as e:
         raise RuntimeError(f"Failed to download file from {url}") from e
@@ -93,7 +98,7 @@ def extract_archive(filepath: Path, target_dir: Path, verbose: bool = False) -> 
 
     def extract_one(file: Path, extract_to: Path) -> None:
         if verbose:
-            print(f"[extract] Extracting '{file.name}' into '{extract_to}'")
+            logger.info(f"[extract] Extracting '{file.name}' into '{extract_to}'")
         if file.suffix == ".zip":
             with zipfile.ZipFile(file, "r") as zip_ref:
                 zip_ref.extractall(extract_to)
@@ -103,13 +108,13 @@ def extract_archive(filepath: Path, target_dir: Path, verbose: bool = False) -> 
         else:
             raise ValueError(f"Unsupported archive format: {file.name}")
         if verbose:
-            print(f"[extract] Removing archive '{file.name}'")
+            logger.info(f"[extract] Removing archive '{file.name}'")
         file.unlink()  # remove archive after extraction
 
     try:
         queue = [(filepath, target_dir)]
         if verbose:
-            print(f"[extract] Initial archive queue: {[str(filepath)]}")
+            logger.info(f"[extract] Initial archive queue: {[str(filepath)]}")
         while queue:
             archive_path, dest_dir = queue.pop(0)
             extract_one(archive_path, dest_dir)
@@ -120,9 +125,9 @@ def extract_archive(filepath: Path, target_dir: Path, verbose: bool = False) -> 
                     if is_archive(path):
                         queue.append((path, Path(root)))
                         if verbose:
-                            print(f"[extract] Queued nested archive: {path}")
+                            logger.info(f"[extract] Queued nested archive: {path}")
         if verbose:
-            print(f"[extract] Extraction complete for '{filepath}'")
+            logger.info(f"[extract] Extraction complete for '{filepath}'")
     except Exception as e:
         raise RuntimeError(f"Failed to extract archive: {filepath}") from e
 
@@ -142,24 +147,28 @@ def download_data(
         - Metadata dictionary
     """
     if verbose:
-        print(f"[dataset] Starting download workflow for metadata URL: {url}")
+        logger.info(f"[dataset] Starting download workflow for metadata URL: {url}")
     base_dir = Path(base_dir) if isinstance(base_dir, str) else base_dir
     base_dir.mkdir(parents=True, exist_ok=True)
     if verbose:
-        print(f"[dataset] Base directory: {base_dir}")
+        logger.info(f"[dataset] Base directory: {base_dir}")
 
     dataset, distros = get_metadata(url, verbose=verbose)
 
     dataset_dir = get_dataset_dir(dataset, base_dir)
     if verbose:
-        print(f"[dataset] Dataset title='{dataset.title}' -> directory='{dataset_dir}'")
-        print(f"[dataset] Distributions count: {len(distros)}")
+        logger.info(
+            f"[dataset] Dataset title='{dataset.title}' -> directory='{dataset_dir}'"
+        )
+        logger.info(f"[dataset] Distributions count: {len(distros)}")
 
     if dataset_dir.exists():
         if verbose:
-            print("[dataset] Dataset directory already exists. Skipping downloads.")
+            logger.info(
+                "[dataset] Dataset directory already exists. Skipping downloads."
+            )
         else:
-            print(f"Dataset {dataset_dir} already exists. Skipping download.")
+            logger.info(f"Dataset {dataset_dir} already exists. Skipping download.")
         return dataset_dir
 
     dataset_dir.mkdir(parents=True, exist_ok=True)
@@ -168,11 +177,11 @@ def download_data(
         # Prepare a temporary path without extension
         temp_path = dataset_dir / distro.title
         if verbose:
-            print(
+            logger.info(
                 f"[distro {i}] Downloading access_url='{distro.access_url}' -> temp_path='{temp_path}'"
             )
         else:
-            print(f"Downloading {distro.access_url} to {temp_path}")
+            logger.info(f"Downloading {distro.access_url} to {temp_path}")
         filepath = download_file_with_mime(
             distro.access_url, temp_path, verbose=verbose
         )
@@ -182,15 +191,19 @@ def download_data(
             ".tar.gz"
         ):
             if verbose:
-                print(f"[distro {i}] Archive detected: '{filepath.name}' -> extracting")
+                logger.info(
+                    f"[distro {i}] Archive detected: '{filepath.name}' -> extracting"
+                )
             extract_archive(filepath, dataset_dir, verbose=verbose)
         else:
             if verbose:
-                print(f"[distro {i}] Non-archive file retained: '{filepath.name}'")
+                logger.info(
+                    f"[distro {i}] Non-archive file retained: '{filepath.name}'"
+                )
 
     if verbose:
         files = list(dataset_dir.rglob("*"))
-        print(f"[dataset] Download complete. Total files: {len(files)}")
+        logger.info(f"[dataset] Download complete. Total files: {len(files)}")
     return dataset_dir
 
 

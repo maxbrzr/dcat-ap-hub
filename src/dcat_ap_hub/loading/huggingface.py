@@ -3,6 +3,7 @@ import requests
 from typing import Any, Dict, Optional, Tuple, Union
 
 from dcat_ap_hub.loading.metadata import get_metadata
+from dcat_ap_hub.logging import logger
 
 # Import HF base types for typing
 from transformers import (
@@ -76,12 +77,11 @@ def load_hf_model(
             )
 
     # 8️⃣ Log summary
-    print(f"✅ Model loaded: {model_id} ({model.__class__.__name__})")
+    logger.info(f"Model loaded: {model_id} ({model.__class__.__name__})")
     if processor:
-        print(f"✅ Processor loaded: {processor.__class__.__name__}")
+        logger.info(f"Processor loaded: {processor.__class__.__name__}")
     if trust_remote_code:
-        print("⚠️  Used trust_remote_code=True for this model")
-
+        logger.info("Used trust_remote_code=True for this model")
     return model, processor, hf_metadata
 
 
@@ -93,4 +93,4 @@ if __name__ == "__main__":
     # if processor:
     #     inputs = processor("Hello world!", return_tensors="pt")
     #     outputs = model(**inputs)
-    #     print("✅ Forward pass successful:", outputs.last_hidden_state.shape)
+    #     logger.info("Forward pass successful:", outputs.last_hidden_state.shape)
