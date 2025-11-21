@@ -1,6 +1,6 @@
 # DCAT-AP Hub
 
-This library enables easy downloading and loading of datasets whose metadata is provided in the DCAT-AP format. Currently, only JSON-LD is supported.
+This library enables easy downloading and loading of datasets and models whose metadata is provided in the DCAT-AP format. Currently, only JSON-LD is supported.
 
 ### How To Install
 
@@ -17,9 +17,9 @@ pip install dcat-ap-hub
 ```python
 from dcat_ap_hub import download_data, load_data
 
-url = "https://ki-daten.hlrs.de/hub/repo/datasets/dcc5faea-10fd-430b-944b-4ac03383ca9f~~1.jsonld"
+url = "https://data.europa.eu/api/hub/repo/datasets/7b715249-0c76-4592-9df6-f36b9a47f6e5.jsonld"
 
-dataset_dir = download_data(url, base_dir="../datasets")
+dataset_dir = download_data(url, base_dir="./datasets")
 data = load_data(dataset_dir, summarize=True, lazy=True)
 ```
 
@@ -34,7 +34,7 @@ model, processor, metadata = load_hf_model(url)
 
 ### Funding
 
-This project is funded by the European High Performance Computing Joint Undertaking under Grant Agreement No. 101234027.
+This project was developed using resources from the HammerHAI project, an EU co-funded AI Factory initiative operated by the High-Performance Computing Center Stuttgart and supported by the European Commission as well as German federal and state ministries. It is funded by the European High Performance Computing Joint Undertaking under Grant Agreement No. 101234027.
 
 <!-- ### With Custom Parsing
 

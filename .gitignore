@@ -14,3 +14,4 @@ venv/
 datasets/
 **/datasets/
 
+**/.DS_Store
