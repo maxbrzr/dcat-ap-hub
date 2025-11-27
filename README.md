@@ -29,6 +29,7 @@ data = load_data(dataset_dir, summarize=True, lazy=True)
 from dcat_ap_hub import load_hf_model
 
 url = "https://ki-daten.hlrs.de/hub/repo/datasets/6f75de8b60a9f8a2fdf7b69cbd86d9e64bcb3837.jsonld"
+
 model, processor, metadata = load_hf_model(url)
 ```
 

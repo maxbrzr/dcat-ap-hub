@@ -1,7 +1,7 @@
 [project]
 name = "dcat-ap-hub"
-version = "0.0.2"
-description = "Add your description here"
+version = "0.0.3"
+description = "A library for loading datasets and models whose metadata is provided in the DCAT-AP format."
 readme = "README.md"
 authors = [
     { name = "maxbrzr", email = "maximilian.burzer@kit.edu" }
