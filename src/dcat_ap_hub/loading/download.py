@@ -176,15 +176,28 @@ def download_data(
     for i, distro in enumerate(distros):
         # Prepare a temporary path without extension
         temp_path = dataset_dir / distro.title
-        if verbose:
-            logger.info(
-                f"[distro {i}] Downloading access_url='{distro.access_url}' -> temp_path='{temp_path}'"
+        if distro.download_url:
+            if verbose:
+                logger.info(
+                    f"[distro {i}] Downloading download_url='{distro.download_url}' -> temp_path='{temp_path}'"
+                )
+            else:
+                logger.info(f"Downloading {distro.download_url} to {temp_path}")
+            filepath = download_file_with_mime(
+                distro.download_url, temp_path, verbose=verbose
             )
         else:
-            logger.info(f"Downloading {distro.access_url} to {temp_path}")
-        filepath = download_file_with_mime(
-            distro.access_url, temp_path, verbose=verbose
-        )
+            if verbose:
+                logger.info(
+                    f"[distro {i}] No download_url for distribution '{distro.title}'. Using access_url instead."
+                )
+            else:
+                logger.info(
+                    f"No download_url for distribution '{distro.title}'. Using access_url instead."
+                )
+            filepath = download_file_with_mime(
+                distro.access_url, temp_path, verbose=verbose
+            )
 
         # Extract if it's an archive
         if filepath.suffix in [".zip", ".tgz", ".gz"] or filepath.name.endswith(

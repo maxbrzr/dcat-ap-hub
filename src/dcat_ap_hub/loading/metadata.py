@@ -119,6 +119,7 @@ def parse_metadata(
                     description=extract_lang_value(entry.get("dct:description", "")),
                     format=extract_value(entry.get("dct:format", "")),
                     access_url=extract_value(entry.get("dcat:accessURL", "")),
+                    download_url=extract_value(entry.get("dcat:downloadURL", "")),
                 )
                 distros.append(distro)
                 if verbose:
