@@ -1,6 +1,6 @@
 [project]
 name = "dcat-ap-hub"
-version = "0.0.3"
+version = "0.1.0"
 description = "A library for loading datasets and models whose metadata is provided in the DCAT-AP format."
 readme = "README.md"
 authors = [
