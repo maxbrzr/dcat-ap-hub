@@ -7,13 +7,17 @@ __pycache__/
 **/__pycache__/
 
 # Ignore virtual environments
-venv/
-**/venv/
+/.venv/
+**/.venv/
 
 # Ignore datasets directory
 datasets/
 **/datasets/
+models/
+**/models/
 
 **/.DS_Store
 redirects
 notes.md
+
+dist
