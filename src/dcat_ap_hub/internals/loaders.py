@@ -12,6 +12,14 @@ from pypdf import PdfReader
 from bs4 import BeautifulSoup
 
 from dcat_ap_hub.internals.logging import logger
+import chardet  # type: ignore
+
+
+def detect_encoding(path, nbytes=100000):
+    with open(path, "rb") as f:
+        raw = f.read(nbytes)
+    result = chardet.detect(raw)
+    return result["encoding"]
 
 
 class FileType(Enum):
@@ -35,7 +43,7 @@ LoadFunc: TypeAlias = Callable[[Path], Any]
 
 
 def _load_csv(p: Path) -> Any:
-    return pd.read_csv(p)
+    return pd.read_csv(p, encoding=detect_encoding(p), sep=None, engine="python")
 
 
 def _load_excel(p: Path) -> Any:
