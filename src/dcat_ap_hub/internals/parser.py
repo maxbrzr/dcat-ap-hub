@@ -5,6 +5,7 @@ from urllib import request
 from typing import List, Union, Dict
 from pathlib import Path
 
+from dcat_ap_hub.core.interfaces import PROCESSOR_PROFILE_URI
 from dcat_ap_hub.internals.logging import logger
 from dcat_ap_hub.internals.models import DatasetMetadata, Distribution
 
@@ -14,6 +15,19 @@ def _extract_value(field: Union[str, dict, None]) -> str:
     if isinstance(field, dict):
         return field.get("@id") or field.get("@value") or ""
     return field if isinstance(field, str) else ""
+
+
+def _extract_list(field: Union[str, List, Dict, None]) -> List[str]:
+    """Helper to extract a list of strings/URIs from a field."""
+    if not field:
+        return []
+    if isinstance(field, str):
+        return [field]
+    if isinstance(field, dict):
+        return [_extract_value(field)]
+    if isinstance(field, list):
+        return [_extract_value(item) for item in field]
+    return []
 
 
 def _extract_lang_value(field: Union[str, List[dict], dict], lang: str = "en") -> str:
@@ -34,16 +48,13 @@ def _extract_lang_value(field: Union[str, List[dict], dict], lang: str = "en") -
 def parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
     """
     Pure logic: converts a raw JSON-LD dictionary into a DatasetMetadata object.
-    Does not perform any network calls.
     """
     entries: List[dict] = data.get("@graph", [])
     dataset_meta = None
     distros = []
 
     for entry in entries:
-        types = entry.get("@type", [])
-        if isinstance(types, str):
-            types = [types]
+        types = _extract_list(entry.get("@type", []))
 
         if "dcat:Dataset" in types:
             is_model = "http://www.w3.org/ns/mls#Model" in types
@@ -55,6 +66,13 @@ def parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
             )
 
         if "dcat:Distribution" in types:
+            # Check 'dct:conformsTo' to see if this is a processor
+            conforms_to = _extract_list(entry.get("dct:conformsTo", []))
+            if PROCESSOR_PROFILE_URI in conforms_to:
+                role = "processor"
+            else:
+                role = "data"
+
             distros.append(
                 Distribution(
                     title=_extract_lang_value(entry.get("dct:title", "")),
@@ -62,6 +80,7 @@ def parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
                     format=_extract_value(entry.get("dct:format", "")),
                     access_url=_extract_value(entry.get("dcat:accessURL", "")),
                     download_url=_extract_value(entry.get("dcat:downloadURL", "")),
+                    role=role,
                 )
             )
 

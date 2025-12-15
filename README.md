@@ -16,18 +16,30 @@ from dcat_ap_hub import Dataset
 url = "https://data.europa.eu/api/hub/repo/datasets/7b715249-0c76-4592-9df6-f36b9a47f6e5.jsonld"
 
 ds = Dataset.from_url(url)
-files = ds.download(target_dir="./data")
+files = ds.download(data_dir="./data")
 ```
 
 ### How To Load Huggingface Models
 
 ```python
-from dcat_ap_hub import load_hf_model
+from dcat_ap_hub import Dataset
 
 url = "https://ki-daten.hlrs.de/hub/repo/datasets/6f75de8b60a9f8a2fdf7b69cbd86d9e64bcb3837.jsonld"
 
 ds = Dataset.from_url(url)
-model, processor, metadata = ds.load_model(cache_dir="./models")
+model, processor, metadata = ds.load_model(model_dir="./models")
+```
+
+### How To Process Datasets If Supported
+
+```python
+from dcat_ap_hub import Dataset
+
+url = "https://data.europa.eu/api/hub/repo/datasets/7b715249-0c76-4592-9df6-f36b9a47f6e5.jsonld"
+
+ds = Dataset.from_url(url)
+ds.download(data_dir="./data")
+files = ds.process(processed_dir="./processed")
 ```
 
 ### Funding

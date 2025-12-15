@@ -6,57 +6,15 @@ from __future__ import annotations
 import requests
 import json
 from pathlib import Path
-from typing import Optional, Any, Tuple, List, Iterator, Union, Dict
+from typing import Optional, Any, Tuple, Union, Dict
 
+from dcat_ap_hub.core.files import FileCollection
 from dcat_ap_hub.internals.models import DatasetMetadata, Distribution
 from dcat_ap_hub.internals.parser import fetch_and_parse, parse_local_file
+from dcat_ap_hub.internals.processor import apply_processor_logic
 from dcat_ap_hub.internals.transfer import download_dataset_files
-from dcat_ap_hub.internals.loaders import scan_directory, LazyAsset
+from dcat_ap_hub.internals.loaders import scan_directory
 from dcat_ap_hub.internals.integrations import load_hf_model
-
-
-class FileCollection:
-    """Smart container for downloaded files."""
-
-    def __init__(self, root: Path, assets: Dict[str, LazyAsset]):
-        self.root = root
-        self._assets = assets
-
-    def __getitem__(self, key: str) -> LazyAsset:
-        if key in self._assets:
-            return self._assets[key]
-        matches = [k for k in self._assets if key in k]
-        if len(matches) == 1:
-            return self._assets[matches[0]]
-        if not matches:
-            raise KeyError(f"File '{key}' not found in {self.root.name}.")
-        raise KeyError(f"Ambiguous key '{key}'. Matches: {matches}")
-
-    def __iter__(self) -> Iterator[LazyAsset]:
-        return iter(self._assets.values())
-
-    def __len__(self) -> int:
-        return len(self._assets)
-
-    def filter_by(self, ext: str) -> List[LazyAsset]:
-        target = ext.lower().lstrip(".")
-        return [
-            f
-            for f in self._assets.values()
-            if f.path.suffix.lower().lstrip(".") == target
-        ]
-
-    @property
-    def dataframes(self) -> List[Any]:
-        return [
-            f.data
-            for f in self._assets.values()
-            if f.path.suffix.lower() in [".csv", ".parquet", ".xlsx", ".xls"]
-            and f.data is not None
-        ]
-
-    def __repr__(self) -> str:
-        return f"<FileCollection: {len(self._assets)} files in '{self.root.name}'>"
 
 
 class Dataset:
@@ -68,9 +26,15 @@ class Dataset:
         self, meta: DatasetMetadata, local_data_path: Optional[Path] = None
     ) -> None:
         self._meta = meta
-        # Path to generic files (CSVs, JSONs, etc.)
+
+        # 1. State for Data
         self._local_data_path = local_data_path
-        # Path to model weights (set only after load_model is called or detected)
+
+        # 2. State for Processed Data
+        # We start as None. It is set by process(), load_processed(), or auto-detection.
+        self._local_processed_path: Optional[Path] = None
+
+        # 3. State for Models
         self._local_model_path: Optional[Path] = None
 
     # =========================================================================
@@ -150,10 +114,15 @@ class Dataset:
         # Assign paths based on what we found
         if is_model_guess:
             ds._local_model_path = p
-            # If it's a model, we usually consider the data path the same
-            # unless specified otherwise, but strict separation is safer.
+            # FIX: Also set data path for models so .process() works
+            ds._local_data_path = p
         else:
             ds._local_data_path = p
+
+        # Auto-detect processed folder so load_processed works immediately
+        processed_guess = p / "processed"
+        if processed_guess.exists() and any(processed_guess.iterdir()):
+            ds._local_processed_path = processed_guess
 
         return ds
 
@@ -173,6 +142,11 @@ class Dataset:
     def local_path(self) -> Optional[Path]:
         """Return the data path if available, else the model path."""
         return self._local_data_path or self._local_model_path
+
+    @property
+    def processed_path(self) -> Optional[Path]:
+        """Public accessor for the processed data path."""
+        return self._local_processed_path
 
     # =========================================================================
     # Core Operations
@@ -201,13 +175,12 @@ class Dataset:
 
     def download(
         self,
-        target_dir: Union[str, Path] = "./data",
+        data_dir: Union[str, Path] = "./data",
         force: bool = False,
         verbose: bool = True,
     ) -> FileCollection:
         """
         Download dataset files to the data directory.
-        Does NOT affect where load_model looks for weights.
         """
         # If we already have a data path, use it
         if self._local_data_path and self._local_data_path.exists() and not force:
@@ -219,7 +192,7 @@ class Dataset:
 
         # Perform download
         path = download_dataset_files(
-            self._meta, Path(target_dir), force=force, verbose=verbose
+            self._meta, Path(data_dir), force=force, verbose=verbose
         )
 
         # Set DATA path specifically
@@ -228,18 +201,106 @@ class Dataset:
         self._save_metadata(path, verbose=verbose)
         return FileCollection(path, scan_directory(path))
 
+    def process(
+        self,
+        processed_dir: str = "processed",
+        force: bool = False,
+        verbose: bool = True,
+    ) -> FileCollection:
+        """
+        Executes the attached processor script on the downloaded data.
+
+        :param processed_dir: Name of the output folder relative to the data path.
+        :param force: If True, runs the processor even if the output folder exists.
+        :return: FileCollection of the processed files.
+        """
+        # 1. Pre-flight checks
+        if not self._local_data_path:
+            raise RuntimeError("Data not downloaded. Call .download() first.")
+
+        # 2. Determine Output Directory early
+        output_dir = self._local_data_path / processed_dir
+
+        # Check if already processed
+        if output_dir.exists() and any(output_dir.iterdir()) and not force:
+            if verbose:
+                print(
+                    f"Processed data found at '{output_dir.name}'. Skipping (use force=True to rerun)."
+                )
+
+            # Update state
+            self._local_processed_path = output_dir
+            return FileCollection(output_dir, scan_directory(output_dir))
+
+        # 3. Find the processor distribution
+        processor_dist = next(
+            (d for d in self._meta.distributions if d.role == "processor"), None
+        )
+        if not processor_dist:
+            raise ValueError("No processor distribution found in metadata.")
+
+        # 4. Resolve paths
+        processor_filename = processor_dist.get_filename()
+        processor_path = self._local_data_path / processor_filename
+
+        # Fallback for extension
+        if not processor_path.exists():
+            processor_path = self._local_data_path / f"{processor_filename}.py"
+
+        if not processor_path.exists():
+            raise FileNotFoundError(f"Processor script not found at {processor_path}")
+
+        # 5. Separate inputs (data) from the tool (processor)
+        # Filter out the script itself AND the metadata file to be safe
+        input_paths = [
+            f
+            for f in self._local_data_path.iterdir()
+            if f.is_file()
+            and f.name != processor_path.name
+            and f.name != "dcat-metadata.jsonld"
+        ]
+
+        # 6. Prepare output and run
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        apply_processor_logic(processor_path, input_paths, output_dir, verbose=verbose)
+
+        # 7. Update State
+        self._local_processed_path = output_dir
+
+        return FileCollection(output_dir, scan_directory(output_dir))
+
+    def load_processed(self) -> FileCollection:
+        """
+        Loads data from the processed directory without re-running logic.
+        """
+        # 1. Check known state
+        if self._local_processed_path and self._local_processed_path.exists():
+            return FileCollection(
+                self._local_processed_path, scan_directory(self._local_processed_path)
+            )
+
+        # 2. Check convention
+        if self._local_data_path:
+            # Assume default "processed" folder
+            candidate = self._local_data_path / "processed"
+            if candidate.exists() and any(candidate.iterdir()):
+                self._local_processed_path = candidate
+                return FileCollection(candidate, scan_directory(candidate))
+
+        raise FileNotFoundError("No processed data found. Run .process() first.")
+
     def load_model(
         self,
+        model_dir: Union[str, Path] = "./models",
         token: Optional[str] = None,
         device_map: Union[str, Dict] = "auto",
         dtype: str = "auto",
         trust_remote_code: bool = False,
         load_task_specific_head: bool = True,
-        cache_dir: Union[str, Path] = Path("./models"),
     ) -> Tuple[Any, Any, Dict[str, Any]]:
         """
         Load as Hugging Face model.
-        Uses 'base_dir' for model weights (completely separate from data download dir).
         """
         if not self.is_model and not (
             self._local_model_path and (self._local_model_path / "config.json").exists()
@@ -248,20 +309,11 @@ class Dataset:
                 f"Dataset '{self.title}' is not marked as a Machine Learning Model."
             )
 
-        # 1. Determine Source
-        # Priority:
-        # A. Existing _local_model_path (we loaded from a model dir)
-        # B. Title (Model ID) -> Let Hugging Face manage the download into 'base_dir'
-
         if self._local_model_path and (self._local_model_path / "config.json").exists():
             model_source = str(self._local_model_path.absolute())
-            if self._local_data_path:
-                pass  # We ignore the data path entirely for model loading
         else:
             model_source = self.title
 
-        # 2. Call Integration
-        # Hugging Face will cache into 'cache_dir' if provided.
         model, tokenizer, meta = load_hf_model(
             model_id=model_source,
             token=token,
@@ -269,23 +321,18 @@ class Dataset:
             dtype=dtype,
             trust_remote_code=trust_remote_code,
             load_task_specific_head=load_task_specific_head,
-            cache_dir=cache_dir,
+            cache_dir=model_dir,
         )
-
-        # 3. Update model path if successful
-        # If we used the HF Hub, 'base_dir' acts as the cache,
-        # but HF manages the internal structure (blobs/snapshots).
-        # We generally don't set _local_model_path to the specific snapshot hash
-        # unless we want to lock it, but for simplicity we leave it None if managed by HF cache.
 
         return model, tokenizer, meta
 
     def __repr__(self) -> str:
         icon = "🧠" if self.is_model else "📊"
-        # Show both paths if they exist
         locs = []
         if self._local_data_path:
             locs.append(f"Data: {self._local_data_path.name}")
+        if self._local_processed_path:
+            locs.append("Processed: ✓")
         if self._local_model_path:
             locs.append(f"Model: {self._local_model_path.name}")
 

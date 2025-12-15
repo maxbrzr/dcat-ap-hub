@@ -12,6 +12,7 @@ class Distribution:
     description: str
     format: str
     access_url: str
+    role: str = "data"  # "data" or "processor"
     download_url: Optional[str] = None
 
     @property
