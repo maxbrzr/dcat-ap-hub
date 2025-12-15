@@ -11,12 +11,12 @@ pip install dcat-ap-hub
 ### How To Load Datasets
 
 ```python
-from dcat_ap_hub import download_data, load_data
+from dcat_ap_hub import Dataset
 
 url = "https://data.europa.eu/api/hub/repo/datasets/7b715249-0c76-4592-9df6-f36b9a47f6e5.jsonld"
 
-dataset_dir = download_data(url, base_dir="./datasets")
-data = load_data(dataset_dir, summarize=True, lazy=True)
+ds = Dataset.from_url(url)
+files = ds.download(target_dir="./data")
 ```
 
 ### How To Load Huggingface Models
@@ -26,7 +26,8 @@ from dcat_ap_hub import load_hf_model
 
 url = "https://ki-daten.hlrs.de/hub/repo/datasets/6f75de8b60a9f8a2fdf7b69cbd86d9e64bcb3837.jsonld"
 
-model, processor, metadata = load_hf_model(url, base_dir="./models")
+ds = Dataset.from_url(url)
+model, processor, metadata = ds.load_model(cache_dir="./models")
 ```
 
 ### Funding
