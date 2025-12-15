@@ -3,6 +3,9 @@
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+PROCESSOR_PROFILE_URI = "http://example.org/profiles/Processor"
+HF_METADATA_PROFILE_URI = "http://example.org/profiles/HuggingFaceMetadata"
+
 
 @dataclass
 class Distribution:
@@ -12,7 +15,7 @@ class Distribution:
     description: str
     format: str
     access_url: str
-    role: str = "data"  # "data" or "processor"
+    role: str = "data"  # "data", "processor", or "hf-metadata"
     download_url: Optional[str] = None
 
     @property

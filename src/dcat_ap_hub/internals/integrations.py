@@ -27,6 +27,9 @@ def fetch_hf_metadata(model_id: str, token: Optional[str] = None) -> Dict[str, A
     if os.path.isdir(model_id):
         return {}
 
+    # Log that we are about to hit the network
+    logger.info(f"Fetching Hugging Face metadata for '{model_id}' from API...")
+
     url = f"https://huggingface.co/api/models/{model_id}"
     headers = {"Accept": "application/json"}
     if token:
@@ -63,13 +66,18 @@ def load_hf_model(
     model_id: str,
     token: Optional[str] = None,
     device_map: Optional[Union[str, Dict]] = "auto",
-    dtype: str = "auto",  # Added dtype support
+    dtype: str = "auto",
     trust_remote_code: bool = False,
     load_task_specific_head: bool = True,
     cache_dir: Path | str = Path("./models"),
+    preloaded_metadata: Optional[Dict] = None,  # Added parameter
 ) -> Tuple[Any, Any, Dict[str, Any]]:
-    # Step 1: Try to fetch metadata (soft fail)
-    hf_metadata = fetch_hf_metadata(model_id, token=token)
+    # Step 1: Get metadata (use preloaded if available, else fetch)
+    if preloaded_metadata is not None:
+        logger.info("Using preloaded Hugging Face metadata from distribution.")
+        hf_metadata = preloaded_metadata
+    else:
+        hf_metadata = fetch_hf_metadata(model_id, token=token)
 
     # Step 2: Determine Model Class
     try:
@@ -79,10 +87,6 @@ def load_hf_model(
 
     cls_name = _get_model_class_name(hf_metadata, load_task_specific_head)
 
-    # If metadata failed (local model), force AutoModel (or let user override via kwargs logic in future)
-    # But often AutoModelForCausalLM works generically if we guess wrong.
-    # For robust local loading, usually AutoModel is safest, OR we inspect config.json locally.
-    # For now, we default to the class derived or AutoModel.
     model_class = getattr(transformers, cls_name)
 
     logger.info(f"Loading '{model_id}' using {cls_name}...")
@@ -98,7 +102,6 @@ def load_hf_model(
             cache_dir=cache_dir,
         )
 
-        # Smart tokenizer loading
         try:
             tokenizer = transformers.AutoTokenizer.from_pretrained(
                 model_id,

@@ -309,11 +309,35 @@ class Dataset:
                 f"Dataset '{self.title}' is not marked as a Machine Learning Model."
             )
 
+        # 1. Determine model source (local path or HF Hub ID)
         if self._local_model_path and (self._local_model_path / "config.json").exists():
             model_source = str(self._local_model_path.absolute())
         else:
             model_source = self.title
 
+        # 2. Check for local HF metadata distribution
+        preloaded_meta = None
+        hf_meta_dist = next(
+            (d for d in self._meta.distributions if d.role == "hf-metadata"), None
+        )
+
+        # Only attempt to load if we have local data and the file exists
+        if hf_meta_dist and self._local_data_path:
+            dist_filename = hf_meta_dist.get_filename()
+            candidates = [
+                self._local_data_path / dist_filename,
+                self._local_data_path / f"{dist_filename}.json",
+            ]
+
+            for c in candidates:
+                if c.exists():
+                    try:
+                        preloaded_meta = json.loads(c.read_text(encoding="utf-8"))
+                        break
+                    except Exception as e:
+                        print(f"Warning: Failed to parse local HF metadata file: {e}")
+
+        # 3. Load model
         model, tokenizer, meta = load_hf_model(
             model_id=model_source,
             token=token,
@@ -322,6 +346,7 @@ class Dataset:
             trust_remote_code=trust_remote_code,
             load_task_specific_head=load_task_specific_head,
             cache_dir=model_dir,
+            preloaded_metadata=preloaded_meta,
         )
 
         return model, tokenizer, meta

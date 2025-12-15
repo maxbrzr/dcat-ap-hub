@@ -5,9 +5,13 @@ from urllib import request
 from typing import List, Union, Dict
 from pathlib import Path
 
-from dcat_ap_hub.core.interfaces import PROCESSOR_PROFILE_URI
 from dcat_ap_hub.internals.logging import logger
-from dcat_ap_hub.internals.models import DatasetMetadata, Distribution
+from dcat_ap_hub.internals.models import (
+    DatasetMetadata,
+    Distribution,
+    PROCESSOR_PROFILE_URI,
+    HF_METADATA_PROFILE_URI,
+)
 
 
 def _extract_value(field: Union[str, dict, None]) -> str:
@@ -66,10 +70,13 @@ def parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
             )
 
         if "dcat:Distribution" in types:
-            # Check 'dct:conformsTo' to see if this is a processor
+            # Check 'dct:conformsTo' to determine role
             conforms_to = _extract_list(entry.get("dct:conformsTo", []))
+
             if PROCESSOR_PROFILE_URI in conforms_to:
                 role = "processor"
+            elif HF_METADATA_PROFILE_URI in conforms_to:
+                role = "hf-metadata"
             else:
                 role = "data"
 

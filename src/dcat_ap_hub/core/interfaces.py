@@ -2,8 +2,6 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List
 
-PROCESSOR_PROFILE_URI = "http://example.org/profiles/Processor"
-
 
 class BaseProcessor(ABC):
     """

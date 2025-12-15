@@ -27,6 +27,7 @@ from dcat_ap_hub import Dataset
 url = "https://ki-daten.hlrs.de/hub/repo/datasets/6f75de8b60a9f8a2fdf7b69cbd86d9e64bcb3837.jsonld"
 
 ds = Dataset.from_url(url)
+ds.download(data_dir="./data")
 model, processor, metadata = ds.load_model(model_dir="./models")
 ```
 
