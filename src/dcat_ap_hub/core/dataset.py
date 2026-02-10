@@ -3,18 +3,21 @@ Core interface for the DCAT-AP Hub.
 """
 
 from __future__ import annotations
-import requests
+
 import json
 from pathlib import Path
-from typing import Optional, Any, Tuple, Union, Dict
+from typing import Any, Dict, Optional, Tuple, Union
+
+import requests
 
 from dcat_ap_hub.core.files import FileCollection
+from dcat_ap_hub.internals.constants import HF_FORMAT, ONNX_FORMAT
+from dcat_ap_hub.internals.integrations import load_hf_model, load_onnx_model
+from dcat_ap_hub.internals.loaders import scan_directory
 from dcat_ap_hub.internals.models import DatasetMetadata, Distribution
 from dcat_ap_hub.internals.parser import fetch_and_parse, parse_local_file
 from dcat_ap_hub.internals.processor import apply_processor_logic
 from dcat_ap_hub.internals.transfer import download_dataset_files
-from dcat_ap_hub.internals.loaders import scan_directory
-from dcat_ap_hub.internals.integrations import load_hf_model
 
 
 class Dataset:
@@ -92,7 +95,7 @@ class Dataset:
                 continue
 
         # 2. If no metadata, create virtual
-        is_model_guess = (p / "config.json").exists()
+        is_model_guess = (p / "config.json").exists() or any(p.glob("*.onnx"))
 
         if not meta:
             files = [f for f in p.iterdir() if f.is_file()]
@@ -290,6 +293,100 @@ class Dataset:
 
         raise FileNotFoundError("No processed data found. Run .process() first.")
 
+    # =========================================================================
+    # Model Loading Helpers
+    # =========================================================================
+
+    def _find_file_by_extension(self, extension: str) -> Optional[Path]:
+        """Helper to find a file with a specific extension in available paths."""
+        search_paths = [self._local_model_path, self._local_data_path]
+        for p in search_paths:
+            if p and p.exists():
+                candidates = list(p.glob(f"*.{extension.lstrip('.')}"))
+                if candidates:
+                    return candidates[0]
+        return None
+
+    def _load_sidecar_metadata(self, target_format: str) -> Optional[Dict[str, Any]]:
+        """Helper to load sidecar metadata JSON for a specific model format."""
+        if not self._local_data_path:
+            return None
+
+        dist = next(
+            (
+                d
+                for d in self._meta.distributions
+                if d.role == "model" and d.format == target_format
+            ),
+            None,
+        )
+        if not dist:
+            return None
+
+        # Try exact filename and with .json extension
+        base_name = dist.get_filename()
+        candidates = [
+            self._local_data_path / base_name,
+            self._local_data_path / f"{base_name}.json",
+        ]
+
+        for c in candidates:
+            if c.exists():
+                try:
+                    return json.loads(c.read_text(encoding="utf-8"))
+                except Exception as e:
+                    print(
+                        f"Warning: Failed to parse local {target_format} metadata: {e}"
+                    )
+        return None
+
+    def _load_as_onnx_model(
+        self, providers: Optional[list]
+    ) -> Tuple[Any, Any, Dict[str, Any]]:
+        """Internal handler for ONNX models."""
+        onnx_path = self._find_file_by_extension("onnx")
+        if not onnx_path:
+            # Fallback check path directly if it was just a mis-detection
+            if self._local_model_path and str(self._local_model_path).endswith(".onnx"):
+                onnx_path = self._local_model_path
+
+        if not onnx_path:
+            raise FileNotFoundError("ONNX file not found in local paths.")
+
+        meta = self._load_sidecar_metadata(ONNX_FORMAT)
+        return load_onnx_model(onnx_path, providers=providers, preloaded_metadata=meta)
+
+    def _load_as_hf_model(
+        self,
+        model_dir: Union[str, Path],
+        token: Optional[str],
+        device_map: Union[str, Dict],
+        dtype: str,
+        trust_remote_code: bool,
+        load_task_specific_head: bool,
+    ) -> Tuple[Any, Any, Dict[str, Any]]:
+        """Internal handler for Hugging Face models."""
+        # 1. Determine source
+        if self._local_model_path and (self._local_model_path / "config.json").exists():
+            model_source = str(self._local_model_path.absolute())
+        else:
+            model_source = self.title
+
+        # 2. Metadata
+        meta = self._load_sidecar_metadata(HF_FORMAT)
+
+        # 3. Load
+        return load_hf_model(
+            model_id=model_source,
+            token=token,
+            device_map=device_map,
+            dtype=dtype,
+            trust_remote_code=trust_remote_code,
+            load_task_specific_head=load_task_specific_head,
+            cache_dir=model_dir,
+            preloaded_metadata=meta,
+        )
+
     def load_model(
         self,
         model_dir: Union[str, Path] = "./models",
@@ -298,58 +395,30 @@ class Dataset:
         dtype: str = "auto",
         trust_remote_code: bool = False,
         load_task_specific_head: bool = True,
+        onnx_providers: Optional[list] = None,
     ) -> Tuple[Any, Any, Dict[str, Any]]:
         """
-        Load as Hugging Face model.
+        Load as Hugging Face or ONNX model.
         """
-        if not self.is_model and not (
-            self._local_model_path and (self._local_model_path / "config.json").exists()
-        ):
-            raise ValueError(
-                f"Dataset '{self.title}' is not marked as a Machine Learning Model."
-            )
-
-        # 1. Determine model source (local path or HF Hub ID)
-        if self._local_model_path and (self._local_model_path / "config.json").exists():
-            model_source = str(self._local_model_path.absolute())
-        else:
-            model_source = self.title
-
-        # 2. Check for local HF metadata distribution
-        preloaded_meta = None
-        hf_meta_dist = next(
-            (d for d in self._meta.distributions if d.role == "hf-metadata"), None
+        # Detection
+        has_onnx = self._find_file_by_extension("onnx") is not None
+        should_be_onnx = has_onnx or any(
+            d.role == "model" and d.format == ONNX_FORMAT
+            for d in self._meta.distributions
         )
 
-        # Only attempt to load if we have local data and the file exists
-        if hf_meta_dist and self._local_data_path:
-            dist_filename = hf_meta_dist.get_filename()
-            candidates = [
-                self._local_data_path / dist_filename,
-                self._local_data_path / f"{dist_filename}.json",
-            ]
+        # Dispatch
+        if should_be_onnx:
+            return self._load_as_onnx_model(onnx_providers)
 
-            for c in candidates:
-                if c.exists():
-                    try:
-                        preloaded_meta = json.loads(c.read_text(encoding="utf-8"))
-                        break
-                    except Exception as e:
-                        print(f"Warning: Failed to parse local HF metadata file: {e}")
-
-        # 3. Load model
-        model, tokenizer, meta = load_hf_model(
-            model_id=model_source,
-            token=token,
-            device_map=device_map,
-            dtype=dtype,
-            trust_remote_code=trust_remote_code,
-            load_task_specific_head=load_task_specific_head,
-            cache_dir=model_dir,
-            preloaded_metadata=preloaded_meta,
+        return self._load_as_hf_model(
+            model_dir,
+            token,
+            device_map,
+            dtype,
+            trust_remote_code,
+            load_task_specific_head,
         )
-
-        return model, tokenizer, meta
 
     def __repr__(self) -> str:
         icon = "🧠" if self.is_model else "📊"

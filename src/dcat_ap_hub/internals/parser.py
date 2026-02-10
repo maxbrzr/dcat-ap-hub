@@ -1,17 +1,19 @@
 """JSON-LD fetching and parsing logic."""
 
 import json
-from urllib import request
-from typing import List, Union, Dict
 from pathlib import Path
+from typing import Dict, List, Union
+from urllib import request
 
-from dcat_ap_hub.internals.logging import logger
-from dcat_ap_hub.internals.models import (
-    DatasetMetadata,
-    Distribution,
-    PROCESSOR_PROFILE_URI,
+from dcat_ap_hub.internals.constants import (
+    HF_FORMAT,
     HF_METADATA_PROFILE_URI,
+    ONNX_FORMAT,
+    ONNX_METADATA_PROFILE_URI,
+    PROCESSOR_PROFILE_URI,
 )
+from dcat_ap_hub.internals.logging import logger
+from dcat_ap_hub.internals.models import DatasetMetadata, Distribution
 
 
 def _extract_value(field: Union[str, dict, None]) -> str:
@@ -72,11 +74,17 @@ def parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
         if "dcat:Distribution" in types:
             # Check 'dct:conformsTo' to determine role
             conforms_to = _extract_list(entry.get("dct:conformsTo", []))
+            format = _extract_value(entry.get("dct:format", ""))
 
             if PROCESSOR_PROFILE_URI in conforms_to:
                 role = "processor"
-            elif HF_METADATA_PROFILE_URI in conforms_to:
-                role = "hf-metadata"
+            elif (
+                HF_METADATA_PROFILE_URI in conforms_to
+                or ONNX_METADATA_PROFILE_URI in conforms_to
+                or format == HF_FORMAT
+                or format == ONNX_FORMAT
+            ):
+                role = "model"
             else:
                 role = "data"
 
@@ -84,7 +92,7 @@ def parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
                 Distribution(
                     title=_extract_lang_value(entry.get("dct:title", "")),
                     description=_extract_lang_value(entry.get("dct:description", "")),
-                    format=_extract_value(entry.get("dct:format", "")),
+                    format=format,
                     access_url=_extract_value(entry.get("dcat:accessURL", "")),
                     download_url=_extract_value(entry.get("dcat:downloadURL", "")),
                     role=role,

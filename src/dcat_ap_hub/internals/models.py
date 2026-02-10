@@ -1,10 +1,7 @@
 """Domain models for the DCAT-AP Hub."""
 
 from dataclasses import dataclass, field
-from typing import List, Optional
-
-PROCESSOR_PROFILE_URI = "http://example.org/profiles/Processor"
-HF_METADATA_PROFILE_URI = "http://example.org/profiles/HuggingFaceMetadata"
+from typing import List, Literal, Optional
 
 
 @dataclass
@@ -15,8 +12,8 @@ class Distribution:
     description: str
     format: str
     access_url: str
-    role: str = "data"  # "data", "processor", or "hf-metadata"
     download_url: Optional[str] = None
+    role: Literal["data", "processor", "model"] = "data"
 
     @property
     def best_url(self) -> str:

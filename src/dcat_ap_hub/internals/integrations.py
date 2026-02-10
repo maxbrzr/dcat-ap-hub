@@ -1,10 +1,11 @@
 """Integrations with external libraries like Hugging Face."""
 
 import importlib
-import requests
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
+
+import requests
 
 from dcat_ap_hub.internals.logging import logger
 
@@ -117,3 +118,52 @@ def load_hf_model(
     except Exception as e:
         logger.error(f"Failed to load model '{model_id}': {e}")
         raise
+
+
+def load_onnx_model(
+    model_path: Union[str, Path],
+    providers: Optional[list] = None,
+    preloaded_metadata: Optional[Dict] = None,
+) -> Tuple[Any, Any, Dict[str, Any]]:
+    """
+    Load an ONNX model using onnxruntime.
+    """
+    try:
+        ort = importlib.import_module("onnxruntime")
+    except ImportError as e:
+        raise ImportError(
+            "The 'onnxruntime' library is required to load ONNX models."
+        ) from e
+
+    path_str = str(model_path)
+    if not os.path.exists(path_str):
+        raise FileNotFoundError(f"ONNX model file not found at: {path_str}")
+
+    logger.info(f"Loading ONNX model from '{path_str}'...")
+
+    if providers is None:
+        providers = ["CPUExecutionProvider"]
+
+    session = ort.InferenceSession(path_str, providers=providers)
+
+    # Extract metadata from the model file if not provided
+    meta = preloaded_metadata or {}
+    if not meta:
+        try:
+            # Try to get metadata from the session if available
+            model_meta = session.get_modelmeta()
+            if model_meta:
+                # convert to dict
+                meta = {
+                    "description": model_meta.description,
+                    "producer_name": model_meta.producer_name,
+                    "graph_name": model_meta.graph_name,
+                    "domain": model_meta.domain,
+                    "version": model_meta.version,
+                    "custom_metadata_map": model_meta.custom_metadata_map,
+                }
+        except Exception as e:
+            logger.warning(f"Could not extract metadata from ONNX model: {e}")
+
+    # No tokenizer standard for ONNX usually, unless wrapped. Returning None for now.
+    return session, None, meta
