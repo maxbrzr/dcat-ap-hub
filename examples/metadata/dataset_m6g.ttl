@@ -8,6 +8,7 @@
 
 <http://example.com/dataset/intelligent-manufacturing> a dcat:Dataset ;
     dct:title "Intelligent Manufacturing Dataset" ;
+    dct:description "The Intelligent Manufacturing Dataset for Predictive Optimization supports research in smart manufacturing and AI-driven process optimization. It includes real-time sensor data, network metrics, and production records for analyzing and improving manufacturing efficiency." ;
     dcat:landingPage <https://www.kaggle.com/datasets/ziya07/intelligent-manufacturing-dataset> ;
     dcat:distribution <http://example.com/dist/intelligent-manufacturing-zip> ;
     dct:relation 

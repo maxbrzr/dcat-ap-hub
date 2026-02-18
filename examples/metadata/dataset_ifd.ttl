@@ -8,6 +8,7 @@
 
 <http://example.com/dataset/iiot-fault-detection> a dcat:Dataset ;
     dct:title "Industrial IoT Fault Detection Dataset" ;
+    dct:description "This dataset supports fault detection and predictive maintenance in industrial IoT settings, featuring multivariate time-series data from sensors like vibration, temperature, pressure, and current. It includes labeled fault indicators for training machine learning models on anomaly detection and classification in automation environments." ;
     dcat:landingPage <https://www.kaggle.com/datasets/ziya07/industrial-iot-fault-detection-dataset> ;
     dcat:distribution <http://example.com/dist/iiot-fault-detection-zip> ;
     dct:relation 

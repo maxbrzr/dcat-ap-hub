@@ -8,6 +8,7 @@
 
 <http://example.com/dataset/iot-predictive-maintenance> a dcat:Dataset ;
     dct:title "IoT Integrated Predictive Maintenance Dataset" ;
+    dct:description "This dataset provides time-series sensor readings from multiple industrial machines on a production line, designed for predictive maintenance and machine failure prediction. It includes fault labels and operational metrics to support machine learning models for anomaly detection and reducing downtime." ;
     dcat:landingPage <https://www.kaggle.com/datasets/ziya07/iot-integrated-predictive-maintenance-dataset> ;
     dcat:distribution <http://example.com/dist/iot-predictive-maintenance-zip> ;
     dct:relation 

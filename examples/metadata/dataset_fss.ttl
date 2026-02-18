@@ -8,6 +8,7 @@
 
 <http://example.com/dataset/industrial-iot-synthetic> a dcat:Dataset ;
     dct:title "Industrial IoT Dataset Synthetic" ;
+    dct:description "A large-scale synthetic dataset from the Factory Sensor Simulator, designed for predictive maintenance, anomaly detection, and industrial machine learning applications in Industry 5.0 contexts. It features sensor readings, operational metrics, and maintenance records from 500,000 simulated machines across 30+ realistic types like CNC mills and robot arms, all fully synthetic for safe modeling." ;
     dcat:landingPage <https://www.kaggle.com/datasets/canozensoy/industrial-iot-dataset-synthetic> ;
     dcat:distribution <http://example.com/dist/industrial-iot-synthetic-zip> ;
     dct:relation 
