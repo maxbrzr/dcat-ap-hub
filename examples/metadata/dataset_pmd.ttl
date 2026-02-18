@@ -11,7 +11,7 @@
     dcat:landingPage <https://www.kaggle.com/datasets/ziya07/iot-integrated-predictive-maintenance-dataset> ;
     dcat:distribution <http://example.com/dist/iot-predictive-maintenance-zip> ;
     dct:relation 
-        <https://github.com/your-org/parser-iot-predictive-maintenance>,
+        <https://github.com/your-org/processor-iot-predictive-maintenance>,
         <https://github.com/your-org/notebook-iot-predictive-maintenance> .
 
 <http://example.com/dist/iot-predictive-maintenance-zip> a dcat:Distribution ;
@@ -19,14 +19,14 @@
     dcat:downloadURL <https://www.kaggle.com/api/v1/datasets/download/ziya07/iot-integrated-predictive-maintenance-dataset?datasetVersionNumber=1> ;
     dct:format "application/zip" .
 
-<https://github.com/your-org/parser-iot-predictive-maintenance> a rdfs:Resource ;
-    dct:title "Parser: IoT Predictive Maintenance" ;
-    dct:description "Python scripts to parse the IoT Predictive Maintenance dataset." ;
-    dcat:downloadURL <https://raw.githubusercontent.com/your-org/parser-iot-predictive-maintenance/main/parser.py> ;
+<https://github.com/your-org/processor-iot-predictive-maintenance> a rdfs:Resource ;
+    dct:title "Processor: IoT Predictive Maintenance" ;
+    dct:description "Python scripts to process the IoT Predictive Maintenance dataset." ;
+    dcat:downloadURL <https://raw.githubusercontent.com/maxbrzr/dcat-ap-hub/refs/heads/main/examples/processors/processor_pmd.py> ;
     dct:format "text/x-python" .
 
 <https://github.com/your-org/notebook-iot-predictive-maintenance> a rdfs:Resource ;
     dct:title "Notebook: IoT Predictive Maintenance" ;
     dct:description "Jupyter Notebook with EDA for the IoT Predictive Maintenance dataset." ;
-    dcat:downloadURL <https://raw.githubusercontent.com/your-org/notebook-iot-predictive-maintenance/main/notebook.ipynb> ;
+    dcat:downloadURL <https://raw.githubusercontent.com/maxbrzr/dcat-ap-hub/refs/heads/main/examples/notebooks/notebook_pmd.ipynb> ;
     dct:format "application/x-ipynb+json" .

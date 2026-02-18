@@ -8,7 +8,7 @@
 
 <http://example.com/catalog/iot-manufacturing-catalog> a dcat:Catalog ;
     dct:title "Industrial IoT & Manufacturing Data Catalog" ;
-    dct:description "A curated collection of Kaggle datasets focused on Industrial IoT, predictive maintenance, and synthetic manufacturing data, complete with parsing scripts and analysis notebooks." ;
+    dct:description "A curated collection of Kaggle datasets focused on Industrial IoT, predictive maintenance, and synthetic manufacturing data, complete with processing scripts and analysis notebooks." ;
     dct:language <http://publications.europa.eu/resource/authority/language/ENG> ;
     dcat:dataset 
         <http://example.com/dataset/industrial-iot-synthetic>,

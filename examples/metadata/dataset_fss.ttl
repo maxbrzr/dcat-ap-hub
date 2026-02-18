@@ -11,7 +11,7 @@
     dcat:landingPage <https://www.kaggle.com/datasets/canozensoy/industrial-iot-dataset-synthetic> ;
     dcat:distribution <http://example.com/dist/industrial-iot-synthetic-zip> ;
     dct:relation 
-        <https://github.com/your-org/parser-industrial-iot-synthetic>,
+        <https://github.com/your-org/processor-industrial-iot-synthetic>,
         <https://github.com/your-org/notebook-industrial-iot-synthetic> .
 
 <http://example.com/dist/industrial-iot-synthetic-zip> a dcat:Distribution ;
@@ -19,14 +19,14 @@
     dcat:downloadURL <https://www.kaggle.com/api/v1/datasets/download/canozensoy/industrial-iot-dataset-synthetic?datasetVersionNumber=1> ;
     dct:format "application/zip" .
 
-<https://github.com/your-org/parser-industrial-iot-synthetic> a rdfs:Resource ;
-    dct:title "Parser: Industrial IoT Synthetic" ;
-    dct:description "Python scripts to parse the Industrial IoT Synthetic dataset." ;
-    dcat:downloadURL <https://raw.githubusercontent.com/your-org/parser-industrial-iot-synthetic/main/parser.py> ;
+<https://github.com/your-org/processor-industrial-iot-synthetic> a rdfs:Resource ;
+    dct:title "Processor: Industrial IoT Synthetic" ;
+    dct:description "Python scripts to process the Industrial IoT Synthetic dataset." ;
+    dcat:downloadURL <https://raw.githubusercontent.com/maxbrzr/dcat-ap-hub/refs/heads/main/examples/processors/processor_fss.py> ;
     dct:format "text/x-python" .
 
 <https://github.com/your-org/notebook-industrial-iot-synthetic> a rdfs:Resource ;
     dct:title "Notebook: Industrial IoT Synthetic" ;
     dct:description "Jupyter Notebook with EDA for the Industrial IoT Synthetic dataset." ;
-    dcat:downloadURL <https://raw.githubusercontent.com/your-org/notebook-industrial-iot-synthetic/main/notebook.ipynb> ;
+    dcat:downloadURL <https://raw.githubusercontent.com/maxbrzr/dcat-ap-hub/refs/heads/main/examples/notebooks/notebook_fss.ipynb> ;
     dct:format "application/x-ipynb+json" .

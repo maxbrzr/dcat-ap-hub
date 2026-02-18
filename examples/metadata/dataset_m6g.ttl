@@ -11,7 +11,7 @@
     dcat:landingPage <https://www.kaggle.com/datasets/ziya07/intelligent-manufacturing-dataset> ;
     dcat:distribution <http://example.com/dist/intelligent-manufacturing-zip> ;
     dct:relation 
-        <https://github.com/your-org/parser-intelligent-manufacturing>,
+        <https://github.com/your-org/processor-intelligent-manufacturing>,
         <https://github.com/your-org/notebook-intelligent-manufacturing> .
 
 <http://example.com/dist/intelligent-manufacturing-zip> a dcat:Distribution ;
@@ -19,14 +19,14 @@
     dcat:downloadURL <https://www.kaggle.com/api/v1/datasets/download/ziya07/intelligent-manufacturing-dataset?datasetVersionNumber=1> ;
     dct:format "application/zip" .
 
-<https://github.com/your-org/parser-intelligent-manufacturing> a rdfs:Resource ;
-    dct:title "Parser: Intelligent Manufacturing" ;
-    dct:description "Python scripts to parse the Intelligent Manufacturing dataset." ;
-    dcat:downloadURL <https://raw.githubusercontent.com/your-org/parser-intelligent-manufacturing/main/parser.py> ;
+<https://github.com/your-org/processor-intelligent-manufacturing> a rdfs:Resource ;
+    dct:title "Processor: Intelligent Manufacturing" ;
+    dct:description "Python scripts to process the Intelligent Manufacturing dataset." ;
+    dcat:downloadURL <https://raw.githubusercontent.com/maxbrzr/dcat-ap-hub/refs/heads/main/examples/processors/processor_m6g.py> ;
     dct:format "text/x-python" .
 
 <https://github.com/your-org/notebook-intelligent-manufacturing> a rdfs:Resource ;
     dct:title "Notebook: Intelligent Manufacturing" ;
     dct:description "Jupyter Notebook with EDA for the Intelligent Manufacturing dataset." ;
-    dcat:downloadURL <https://raw.githubusercontent.com/your-org/notebook-intelligent-manufacturing/main/notebook.ipynb> ;
+    dcat:downloadURL <https://raw.githubusercontent.com/maxbrzr/dcat-ap-hub/refs/heads/main/examples/notebooks/notebook_m6g.ipynb> ;
     dct:format "application/x-ipynb+json" .

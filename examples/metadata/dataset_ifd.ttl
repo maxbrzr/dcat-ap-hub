@@ -11,7 +11,7 @@
     dcat:landingPage <https://www.kaggle.com/datasets/ziya07/industrial-iot-fault-detection-dataset> ;
     dcat:distribution <http://example.com/dist/iiot-fault-detection-zip> ;
     dct:relation 
-        <https://github.com/your-org/parser-iiot-fault-detection>,
+        <https://github.com/your-org/processor-iiot-fault-detection>,
         <https://github.com/your-org/notebook-iiot-fault-detection> .
 
 <http://example.com/dist/iiot-fault-detection-zip> a dcat:Distribution ;
@@ -19,14 +19,14 @@
     dcat:downloadURL <https://www.kaggle.com/api/v1/datasets/download/ziya07/industrial-iot-fault-detection-dataset?datasetVersionNumber=1> ;
     dct:format "application/zip" .
 
-<https://github.com/your-org/parser-iiot-fault-detection> a rdfs:Resource ;
-    dct:title "Parser: IIoT Fault Detection" ;
-    dct:description "Python scripts to parse the IIoT Fault Detection dataset." ;
-    dcat:downloadURL <https://raw.githubusercontent.com/your-org/parser-iiot-fault-detection/main/parser.py> ;
+<https://github.com/your-org/processor-iiot-fault-detection> a rdfs:Resource ;
+    dct:title "Processor: IIoT Fault Detection" ;
+    dct:description "Python scripts to process the IIoT Fault Detection dataset." ;
+    dcat:downloadURL <https://raw.githubusercontent.com/maxbrzr/dcat-ap-hub/refs/heads/main/examples/processors/processor_ifd.py> ;
     dct:format "text/x-python" .
 
 <https://github.com/your-org/notebook-iiot-fault-detection> a rdfs:Resource ;
     dct:title "Notebook: IIoT Fault Detection" ;
     dct:description "Jupyter Notebook with EDA for the IIoT Fault Detection dataset." ;
-    dcat:downloadURL <https://raw.githubusercontent.com/your-org/notebook-iiot-fault-detection/main/notebook.ipynb> ;
+    dcat:downloadURL <https://raw.githubusercontent.com/maxbrzr/dcat-ap-hub/refs/heads/main/examples/notebooks/notebook_ifd.ipynb> ;
     dct:format "application/x-ipynb+json" .
