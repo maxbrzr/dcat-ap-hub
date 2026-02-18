@@ -63,7 +63,9 @@
 
 1. choose benchmark -> manufacturing X
 2. choose datasets X
-3. write metadata for benchmark and upload to test instance X
-4. write parse and notebook -> make repo X
-5. integrate into frontend
+3. write parse and notebook -> make repo X
+4. write metadata for benchmark and upload to test instance X
+5. fix library code to work with related resources x
+5. integrate into frontend 
 6. benchmark notebook
+7. update names and descriptions

@@ -235,16 +235,25 @@ class Dataset:
             self._local_processed_path = output_dir
             return FileCollection(output_dir, scan_directory(output_dir))
 
-        # 3. Find the processor distribution
-        processor_dist = next(
-            (d for d in self._meta.distributions if d.role == "processor"), None
-        )
-        if not processor_dist:
-            raise ValueError("No processor distribution found in metadata.")
+        # 3. Find the processor
+        # Per strict rules: Processors are found in related_resources
+        resources = self._meta.related_resources
+
+        # 3a. Explicit role
+        processor_item = next((r for r in resources if r.role == "processor"), None)
+        notebook_item = next((r for r in resources if r.role == "notebook"), None)
+
+        if not processor_item:
+            raise ValueError("No processor found in related resources.")
 
         # 4. Resolve paths
-        processor_filename = processor_dist.get_filename()
+        processor_filename = processor_item.get_filename()
+        notebook_filename = notebook_item.get_filename() if notebook_item else None
+
         processor_path = self._local_data_path / processor_filename
+        notebook_path = (
+            self._local_data_path / notebook_filename if notebook_filename else None
+        )
 
         # Fallback for extension
         if not processor_path.exists():
@@ -262,6 +271,10 @@ class Dataset:
             and f.name != processor_path.name
             and f.name != "dcat-metadata.jsonld"
         ]
+
+        # filter out notebook if it exists
+        if notebook_path and notebook_path.exists():
+            input_paths = [p for p in input_paths if p.name != notebook_path.name]
 
         # 6. Prepare output and run
         output_dir.mkdir(parents=True, exist_ok=True)

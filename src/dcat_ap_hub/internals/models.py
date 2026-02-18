@@ -13,7 +13,7 @@ class Distribution:
     format: str
     access_url: str
     download_url: Optional[str] = None
-    role: Literal["data", "processor", "model"] = "data"
+    role: Literal["data", "model"] = "data"
 
     @property
     def best_url(self) -> str:
@@ -28,11 +28,42 @@ class Distribution:
 
 
 @dataclass
+class RelatedResource:
+    """Represents a related resource (e.g. processor script, notebook)."""
+
+    title: str
+    description: str
+    format: str
+    download_url: Optional[str] = None
+    role: Literal["processor", "notebook"] = "processor"
+
+    @property
+    def best_url(self) -> str:
+        """Return download_url."""
+        return self.download_url or ""
+
+    def get_filename(self) -> str:
+        """Derive filename from URL if possible, else sanitize title."""
+        if self.download_url:
+            from urllib.parse import urlparse
+
+            path = urlparse(self.download_url).path
+            name = path.split("/")[-1]
+            if name:
+                return name
+
+        # Fallback
+        safe = "".join(c for c in self.title if c.isalnum() or c in " ._-")
+        return safe.strip() or "untitled_resource"
+
+
+@dataclass
 class DatasetMetadata:
     """Internal metadata representation."""
 
     title: str
     description: str
     distributions: List[Distribution] = field(default_factory=list)
+    related_resources: List[RelatedResource] = field(default_factory=list)
     is_model: bool = False
     source_url: str = ""

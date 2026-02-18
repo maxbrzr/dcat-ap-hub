@@ -2,10 +2,11 @@
 
 import mimetypes
 import os
-import zipfile
 import tarfile
-import requests
+import zipfile
 from pathlib import Path
+
+import requests
 from tqdm import tqdm
 
 from dcat_ap_hub.internals.logging import logger
@@ -55,11 +56,22 @@ def _download_file(url: str, dest_path: Path, verbose: bool = False) -> Path:
         with requests.get(url, stream=True) as r:
             r.raise_for_status()
 
-            # Correct extension based on Content-Type
+            # Correct extension based on Content-Type, IF no extension present or mismatch
             content_type = r.headers.get("Content-Type", "")
             ext = mimetypes.guess_extension(content_type.split(";")[0])
 
-            if ext and dest_path.suffix != ext:
+            # Special case: Prevent overriding valid code extensions with .txt or .conf
+            # These extensions are usually correct from source but served as text/plain
+            protected_exts = {".py", ".ipynb", ".sh", ".json", ".md", ".yaml", ".yml"}
+
+            should_update = (
+                ext
+                and dest_path.suffix != ext
+                and dest_path.suffix not in protected_exts
+            )
+
+            if should_update:
+                assert ext is not None  # For type checker
                 dest_path = dest_path.with_suffix(ext)
 
             total = int(r.headers.get("content-length", 0))
@@ -124,5 +136,29 @@ def download_dataset_files(
 
         except Exception as e:
             logger.error(f"Failed to process distribution '{distro.title}': {e}")
+
+    for resource in metadata.related_resources:
+        # Initial filename derived from title (extension may change during download)
+        temp_path = dataset_dir / resource.get_filename()
+        url = resource.best_url
+
+        if not url:
+            logger.warning(f"No URL found for related resource '{resource.title}'")
+            continue
+
+        if verbose:
+            logger.info(f"Downloading: {resource.title}")
+
+        try:
+            final_path = _download_file(url, temp_path, verbose=verbose)
+
+            # Check for archive extraction
+            if final_path.suffix in [".zip", ".tgz"] or final_path.name.endswith(
+                ".tar.gz"
+            ):
+                _extract_archive(final_path, dataset_dir)
+
+        except Exception as e:
+            logger.error(f"Failed to process related resource '{resource.title}': {e}")
 
     return dataset_dir

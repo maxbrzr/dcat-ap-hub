@@ -13,7 +13,7 @@ from dcat_ap_hub.internals.constants import (
     PROCESSOR_PROFILE_URI,
 )
 from dcat_ap_hub.internals.logging import logger
-from dcat_ap_hub.internals.models import DatasetMetadata, Distribution
+from dcat_ap_hub.internals.models import DatasetMetadata, Distribution, RelatedResource
 
 
 def _extract_value(field: Union[str, dict, None]) -> str:
@@ -71,22 +71,29 @@ def parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
                 source_url=source_name,
             )
 
-        if "dcat:Distribution" in types:
-            # Check 'dct:conformsTo' to determine role
-            conforms_to = _extract_list(entry.get("dct:conformsTo", []))
-            format = _extract_value(entry.get("dct:format", ""))
+    if not dataset_meta:
+        raise ValueError(f"No dcat:Dataset found in {source_name}")
 
-            if PROCESSOR_PROFILE_URI in conforms_to:
-                role = "processor"
-            elif (
+    # 2. Second pass: Parse distributions and related resources
+    related_resources = []
+
+    for entry in entries:
+        types = _extract_list(entry.get("@type", []))
+
+        # Determine role and attributes
+        conforms_to = _extract_list(entry.get("dct:conformsTo", []))
+        format = _extract_value(entry.get("dct:format", ""))
+
+        if "dcat:Distribution" in types:
+            # Determine role for Distribution (data, model)
+            dist_role = "data"  # Default
+            if (
                 HF_METADATA_PROFILE_URI in conforms_to
                 or ONNX_METADATA_PROFILE_URI in conforms_to
                 or format == HF_FORMAT
                 or format == ONNX_FORMAT
             ):
-                role = "model"
-            else:
-                role = "data"
+                dist_role = "model"
 
             distros.append(
                 Distribution(
@@ -95,14 +102,34 @@ def parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
                     format=format,
                     access_url=_extract_value(entry.get("dcat:accessURL", "")),
                     download_url=_extract_value(entry.get("dcat:downloadURL", "")),
-                    role=role,
+                    role=dist_role,
                 )
             )
 
-    if not dataset_meta:
-        raise ValueError(f"No dcat:Dataset found in {source_name}")
+        elif "rdfs:Resource" in types:
+            # It's a related resource (processor, notebook)
+            rel_role = "processor"  # Default
+            title = _extract_lang_value(entry.get("dct:title", "")).lower()
+
+            if PROCESSOR_PROFILE_URI in conforms_to:
+                rel_role = "processor"
+            elif "ipynb" in format or "notebook" in title:
+                rel_role = "notebook"
+
+            # The definition of "processor" is broad (script, tool), so default is acceptable if not explicitly notebook
+
+            related_resources.append(
+                RelatedResource(
+                    title=_extract_lang_value(entry.get("dct:title", "")),
+                    description=_extract_lang_value(entry.get("dct:description", "")),
+                    format=format,
+                    download_url=_extract_value(entry.get("dcat:downloadURL", "")),
+                    role=rel_role,
+                )
+            )
 
     dataset_meta.distributions = distros
+    dataset_meta.related_resources = related_resources
     return dataset_meta
 
 
