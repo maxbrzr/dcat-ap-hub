@@ -1,0 +1,17 @@
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+# =====================================================================
+# THE MAIN CATALOG
+# =====================================================================
+
+<http://example.com/catalog/iot-manufacturing-catalog> a dcat:Catalog ;
+    dct:title "Industrial IoT & Manufacturing Data Catalog" ;
+    dct:description "A curated collection of Kaggle datasets focused on Industrial IoT, predictive maintenance, and synthetic manufacturing data, complete with parsing scripts and analysis notebooks." ;
+    dct:language <http://publications.europa.eu/resource/authority/language/ENG> ;
+    dcat:dataset 
+        <http://example.com/dataset/industrial-iot-synthetic>,
+        <http://example.com/dataset/iiot-fault-detection>,
+        <http://example.com/dataset/intelligent-manufacturing>,
+        <http://example.com/dataset/iot-predictive-maintenance> .

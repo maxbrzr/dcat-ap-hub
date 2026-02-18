@@ -1,0 +1,32 @@
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+# =====================================================================
+# DATASET: Industrial IoT Dataset Synthetic
+# =====================================================================
+
+<http://example.com/dataset/industrial-iot-synthetic> a dcat:Dataset ;
+    dct:title "Industrial IoT Dataset Synthetic" ;
+    dcat:landingPage <https://www.kaggle.com/datasets/canozensoy/industrial-iot-dataset-synthetic> ;
+    dcat:distribution <http://example.com/dist/industrial-iot-synthetic-zip> ;
+    dct:relation 
+        <https://github.com/your-org/parser-industrial-iot-synthetic>,
+        <https://github.com/your-org/notebook-industrial-iot-synthetic> .
+
+<http://example.com/dist/industrial-iot-synthetic-zip> a dcat:Distribution ;
+    dct:title "Dataset Archive (ZIP)" ;
+    dcat:downloadURL <https://www.kaggle.com/api/v1/datasets/download/canozensoy/industrial-iot-dataset-synthetic?datasetVersionNumber=1> ;
+    dct:format "application/zip" .
+
+<https://github.com/your-org/parser-industrial-iot-synthetic> a rdfs:Resource ;
+    dct:title "Parser: Industrial IoT Synthetic" ;
+    dct:description "Python scripts to parse the Industrial IoT Synthetic dataset." ;
+    dcat:downloadURL <https://raw.githubusercontent.com/your-org/parser-industrial-iot-synthetic/main/parser.py> ;
+    dct:format "text/x-python" .
+
+<https://github.com/your-org/notebook-industrial-iot-synthetic> a rdfs:Resource ;
+    dct:title "Notebook: Industrial IoT Synthetic" ;
+    dct:description "Jupyter Notebook with EDA for the Industrial IoT Synthetic dataset." ;
+    dcat:downloadURL <https://raw.githubusercontent.com/your-org/notebook-industrial-iot-synthetic/main/notebook.ipynb> ;
+    dct:format "application/x-ipynb+json" .
