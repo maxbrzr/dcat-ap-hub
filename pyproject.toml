@@ -1,6 +1,6 @@
 [project]
 name = "dcat-ap-hub"
-version = "0.1.1"
+version = "0.1.2"
 description = "A library for loading datasets and models whose metadata is provided in the DCAT-AP format."
 readme = "README.md"
 authors = [
@@ -9,7 +9,7 @@ authors = [
 requires-python = ">=3.11"
 dependencies = [
     "beautifulsoup4>=4.13.5",
-    "chardet>=5.2.0",
+    "chardet>=6.0.0.post1",
     "opencv-python>=4.12.0.88",
     "openpyxl>=3.1.5",
     "pandas>=2.3.1",
