@@ -9,13 +9,13 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 
-from dcat_ap_hub import BaseProcessor
+from dcat_ap_hub import DataProcessor
 
 # Type definition for the configuration
 ConfigDict = Dict[str, Union[str, List[str], Dict[str, List[str]]]]
 
 
-class ProcessorM6G(BaseProcessor):
+class ProcessorM6G(DataProcessor):
     def __init__(self) -> None:
         super().__init__()
 
