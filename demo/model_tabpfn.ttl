@@ -10,13 +10,13 @@
     dct:title "TabPFN: Pre-trained Transformer for Tabular Data" ;
     dct:description "TabPFN is a pre-trained transformer trained on billions of synthetic datasets to “learn the learning process.” Instead of re-optimizing weights for every new dataset, TabPFN encodes inductive biases, priors, and optimization strategies and applies them to your data via in-context learning. That means one forward pass → high-quality predictions in seconds." ;
     dcat:landingPage <https://docs.priorlabs.ai/overview> ;
-    dcat:distribution <http://example.com/dist/tabpfn-zip> ;
+    dcat:distribution <http://example.com/dist/tabpfn> ;
     dct:relation 
-        <https://github.com/your-org/processor-tabpfn>,
-        <https://github.com/your-org/notebook-tabpfn> .
+        <https://github.com/your-org/tabpfn-model>.
 
-<http://example.com/dist/tabpfn-zip> a dcat:Distribution ;
+<https://github.com/your-org/tabpfn-model> a dcat:Distribution ;
     dct:title "Model" ;
-    dcat:conformsTo <http://example.org/profiles/SklearnModelMetadata> ;
-    dcat:downloadURL <https://www.kaggle.com/api/v1/datasets/download/ziya07/iot-integrated-predictive-maintenance-dataset?datasetVersionNumber=1> ;
+    dct:conformsTo 
+        <http://example.org/profiles/SklearnMetadata> ;
+    dcat:downloadURL <https://raw.githubusercontent.com/maxbrzr/dcat-ap-hub/refs/heads/main/examples/processors/tabpfn.py> ;
     dct:format "text/x-python" .

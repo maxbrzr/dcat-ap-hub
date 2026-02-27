@@ -14,6 +14,9 @@ def test_load_hf_model(tmp_path):
     Test loading and downloading a Hugging Face model.
     Replicates parts of notebooks/model.ipynb
     """
+    pytest.importorskip("torch")
+    pytest.importorskip("transformers")
+
     # 1. Load from URL
     ds = Dataset.from_url(HF_MODEL_URL)
     assert ds is not None

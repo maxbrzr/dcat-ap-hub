@@ -8,23 +8,27 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "accelerate>=1.12.0",
     "beautifulsoup4>=4.13.5",
     "chardet>=5.2.0",
-    "ipykernel>=6.30.0",
     "opencv-python>=4.12.0.88",
     "openpyxl>=3.1.5",
     "pandas>=2.3.1",
-    "pandas-stubs>=2.3.0.250703",
     "pypdf>=6.1.0",
     "rdflib>=7.1.4",
     "requests>=2.32.4",
-    "scikit-learn>=1.8.0",
-    "torch>=2.9.0",
+    "tabpfn>=6.0.5",
     "tqdm>=4.67.1",
+]
+
+[project.optional-dependencies]
+onnx = [
+    "onnxruntime>=1.20.0",
+]
+
+huggingface = [
+    "accelerate>=1.12.0",
+    "torch>=2.9.0",
     "transformers>=4.57.1",
-    "types-requests>=2.32.4.20250611",
-    "types-tqdm>=4.67.0.20250516",
 ]
 
 [build-system]
@@ -33,5 +37,9 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "ipykernel>=6.30.0",
+    "pandas-stubs>=2.3.0.250703",
     "pytest>=9.0.2",
+    "types-requests>=2.32.4.20250611",
+    "types-tqdm>=4.67.0.20250516",
 ]

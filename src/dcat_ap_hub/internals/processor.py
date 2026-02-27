@@ -1,11 +1,11 @@
+import importlib.util
+import inspect
 import sys
 import uuid
-import inspect
-import importlib.util
 from pathlib import Path
 from typing import List
 
-from dcat_ap_hub.core.interfaces import BaseProcessor
+from dcat_ap_hub.core.interfaces import DataProcessor
 
 
 def apply_processor_logic(
@@ -39,7 +39,7 @@ def apply_processor_logic(
 
         for name, obj in inspect.getmembers(module, inspect.isclass):
             # Check for inheritance
-            if issubclass(obj, BaseProcessor) and obj is not BaseProcessor:
+            if issubclass(obj, DataProcessor) and obj is not DataProcessor:
                 processor_class = obj
                 break
 

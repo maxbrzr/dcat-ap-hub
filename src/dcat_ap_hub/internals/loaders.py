@@ -1,18 +1,19 @@
 """Lazy loading logic for various file formats."""
 
 import json
-from pathlib import Path
-from enum import Enum
-from typing import Any, Callable, Dict, Optional, TypeAlias
 from dataclasses import dataclass, field
-import pandas as pd
-import numpy as np
+from enum import Enum
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional, TypeAlias
+
+import chardet
 import cv2
-from pypdf import PdfReader
+import numpy as np
+import pandas as pd
 from bs4 import BeautifulSoup
+from pypdf import PdfReader
 
 from dcat_ap_hub.internals.logging import logger
-import chardet  # type: ignore
 
 
 def detect_encoding(path, nbytes=100000):

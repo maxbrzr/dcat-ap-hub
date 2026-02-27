@@ -11,6 +11,7 @@ from dcat_ap_hub.internals.constants import (
     ONNX_FORMAT,
     ONNX_METADATA_PROFILE_URI,
     PROCESSOR_PROFILE_URI,
+    SKLEARN_METADATA_PROFILE_URI,
 )
 from dcat_ap_hub.internals.logging import logger
 from dcat_ap_hub.internals.models import DatasetMetadata, Distribution, RelatedResource
@@ -86,14 +87,14 @@ def parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
 
         if "dcat:Distribution" in types:
             # Determine role for Distribution (data, model)
-            dist_role = "data"  # Default
-            if (
-                HF_METADATA_PROFILE_URI in conforms_to
-                or ONNX_METADATA_PROFILE_URI in conforms_to
-                or format == HF_FORMAT
-                or format == ONNX_FORMAT
-            ):
-                dist_role = "model"
+            dist_role = "data"
+
+            if HF_METADATA_PROFILE_URI in conforms_to or format == HF_FORMAT:
+                dist_role = "huggingface_model"
+            elif ONNX_METADATA_PROFILE_URI in conforms_to or format == ONNX_FORMAT:
+                dist_role = "onnx_model"
+            elif SKLEARN_METADATA_PROFILE_URI in conforms_to:
+                dist_role = "sklearn_model"
 
             distros.append(
                 Distribution(

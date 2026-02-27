@@ -1,12 +1,18 @@
 """Integrations with external libraries like Hugging Face."""
 
 import importlib
+import importlib.machinery
+import importlib.util
+import inspect
 import os
+import sys
+import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
 import requests
 
+from dcat_ap_hub.core.interfaces import SKLearnModel
 from dcat_ap_hub.internals.logging import logger
 
 PIPELINE_TO_AUTO_CLASS = {
@@ -84,7 +90,10 @@ def load_hf_model(
     try:
         transformers = importlib.import_module("transformers")
     except ImportError as e:
-        raise ImportError("The 'transformers' library is required.") from e
+        raise ImportError(
+            "The 'transformers' library is required. Install the Hugging Face "
+            'variant with: pip install "dcat-ap-hub[huggingface]".'
+        ) from e
 
     cls_name = _get_model_class_name(hf_metadata, load_task_specific_head)
 
@@ -132,7 +141,8 @@ def load_onnx_model(
         ort = importlib.import_module("onnxruntime")
     except ImportError as e:
         raise ImportError(
-            "The 'onnxruntime' library is required to load ONNX models."
+            "The 'onnxruntime' library is required to load ONNX models. "
+            'Install the ONNX variant with: pip install "dcat-ap-hub[onnx]".'
         ) from e
 
     path_str = str(model_path)
@@ -167,3 +177,56 @@ def load_onnx_model(
 
     # No tokenizer standard for ONNX usually, unless wrapped. Returning None for now.
     return session, None, meta
+
+
+def load_sklearn_model(
+    model_path: Union[str, Path], class_name: Optional[str] = None
+) -> SKLearnModel:
+    """
+    Load a sklearn model by dynamically importing a Python module and
+    instantiating a class that inherits from SKLearnModel.
+    """
+    path = Path(model_path)
+    if not path.exists():
+        raise FileNotFoundError(f"SKLearn model file not found at: {path}")
+
+    # Python module path containing SKLearnModel subclass
+    if path.suffix != ".py" and path.suffix != ".txt":
+        raise ValueError(
+            f"Unsupported sklearn model source '{path.name}'. Expected a .py or .txt module."
+        )
+
+    unique_mod_name = f"dcat_sklearn_model_{path.stem}_{uuid.uuid4().hex[:8]}"
+
+    # Non-.py scripts (e.g. .txt) need an explicit source loader.
+    if path.suffix == ".txt":
+        loader = importlib.machinery.SourceFileLoader(unique_mod_name, str(path))
+        spec = importlib.util.spec_from_loader(unique_mod_name, loader)
+    else:
+        spec = importlib.util.spec_from_file_location(unique_mod_name, path)
+    if not spec or not spec.loader:
+        raise ImportError(f"Could not load module from {path}")
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[unique_mod_name] = module
+    try:
+        spec.loader.exec_module(module)
+
+        selected_class = None
+        for _, obj in inspect.getmembers(module, inspect.isclass):
+            if not issubclass(obj, SKLearnModel) or obj is SKLearnModel:
+                continue
+            if class_name and obj.__name__ != class_name:
+                continue
+            selected_class = obj
+            break
+
+        if not selected_class:
+            hint = f" named '{class_name}'" if class_name else ""
+            raise AttributeError(
+                f"No class{hint} inheriting SKLearnModel found in '{path.name}'."
+            )
+
+        return selected_class()
+    finally:
+        sys.modules.pop(unique_mod_name, None)

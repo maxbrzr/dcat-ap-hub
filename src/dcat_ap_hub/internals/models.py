@@ -13,7 +13,7 @@ class Distribution:
     format: str
     access_url: str
     download_url: Optional[str] = None
-    role: Literal["data", "model"] = "data"
+    role: Literal["data", "onnx_model", "huggingface_model", "sklearn_model"] = "data"
 
     @property
     def best_url(self) -> str:
