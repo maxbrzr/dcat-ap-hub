@@ -16,6 +16,8 @@ from dcat_ap_hub.internals.constants import (
 from dcat_ap_hub.internals.logging import logger
 from dcat_ap_hub.internals.models import DatasetMetadata, Distribution, RelatedResource
 
+JSONLD_ACCEPT_HEADER = "application/ld+json, application/json;q=0.9, */*;q=0.1"
+
 
 def _extract_value(field: Union[str, dict, None]) -> str:
     """Normalize a JSON-LD field to a string."""
@@ -138,7 +140,8 @@ def fetch_and_parse(url: str, verbose: bool = False) -> DatasetMetadata:
     """Fetch from web and parse."""
     if verbose:
         logger.info(f"Fetching: {url}")
-    with request.urlopen(url) as response:
+    req = request.Request(url, headers={"Accept": JSONLD_ACCEPT_HEADER})
+    with request.urlopen(req) as response:
         data = json.load(response)
     return parse_json_content(data, url)
 

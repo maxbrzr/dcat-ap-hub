@@ -1,17 +1,12 @@
-"""
-Core interface for the DCAT-AP Hub.
-"""
-
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Literal, Optional, Tuple, Union
 
 import requests
 
 from dcat_ap_hub.core.files import FileCollection
-from dcat_ap_hub.core.interfaces import SKLearnModel
 from dcat_ap_hub.internals.constants import HF_FORMAT, ONNX_FORMAT
 from dcat_ap_hub.internals.integrations import (
     load_hf_model,
@@ -20,7 +15,11 @@ from dcat_ap_hub.internals.integrations import (
 )
 from dcat_ap_hub.internals.loaders import scan_directory
 from dcat_ap_hub.internals.models import DatasetMetadata, Distribution
-from dcat_ap_hub.internals.parser import fetch_and_parse, parse_local_file
+from dcat_ap_hub.internals.parser import (
+    JSONLD_ACCEPT_HEADER,
+    fetch_and_parse,
+    parse_local_file,
+)
 from dcat_ap_hub.internals.processor import apply_processor_logic
 from dcat_ap_hub.internals.transfer import download_dataset_files
 
@@ -31,6 +30,7 @@ class Dataset:
     """
 
     _MODEL_DIST_ROLES = ("huggingface_model", "onnx_model", "sklearn_model")
+    _MODEL_ROLES = Literal["huggingface_model", "onnx_model", "sklearn_model"]
 
     def __init__(
         self, meta: DatasetMetadata, local_data_path: Optional[Path] = None
@@ -179,7 +179,11 @@ class Dataset:
         try:
             if verbose:
                 print("Saving metadata for offline usage...")
-            response = requests.get(self._meta.source_url, timeout=10)
+            response = requests.get(
+                self._meta.source_url,
+                headers={"Accept": JSONLD_ACCEPT_HEADER},
+                timeout=10,
+            )
             if response.status_code == 200:
                 # Re-serialize to ensure clean formatting
                 data = response.json()
@@ -330,13 +334,36 @@ class Dataset:
                 results.append(p)
         return results
 
+    def _iter_files_with_extensions(self, *extensions: str) -> list[Path]:
+        """Return unique files from search paths matching the given extensions."""
+        seen: set[Path] = set()
+        matches: list[Path] = []
+        normalized = [ext.lstrip(".") for ext in extensions]
+        for root in self._get_search_paths():
+            for ext in normalized:
+                for path in root.glob(f"*.{ext}"):
+                    if path not in seen:
+                        seen.add(path)
+                        matches.append(path)
+        return matches
+
+    def _first_distribution_by_role(
+        self, role: str, target_format: Optional[str] = None
+    ) -> Optional[Distribution]:
+        return next(
+            (
+                d
+                for d in self._meta.distributions
+                if d.role == role
+                and (target_format is None or d.format == target_format)
+            ),
+            None,
+        )
+
     def _find_file_by_extension(self, extension: str) -> Optional[Path]:
         """Helper to find a file with a specific extension in available paths."""
-        for p in self._get_search_paths():
-            candidates = list(p.glob(f"*.{extension.lstrip('.')}"))
-            if candidates:
-                return candidates[0]
-        return None
+        matches = self._iter_files_with_extensions(extension)
+        return matches[0] if matches else None
 
     def _has_local_hf_artifacts(self) -> bool:
         for p in self._get_search_paths():
@@ -345,27 +372,56 @@ class Dataset:
         return False
 
     def _has_local_sklearn_artifacts(self) -> bool:
-        for p in self._get_search_paths():
-            for py_file in p.glob("*.py"):
-                try:
-                    if "SKLearnModel" in py_file.read_text(encoding="utf-8"):
-                        return True
-                except Exception:
-                    continue
-            for txt_file in p.glob("*.txt"):
-                try:
-                    if "SKLearnModel" in txt_file.read_text(encoding="utf-8"):
-                        return True
-                except Exception:
-                    continue
+        for source_file in self._iter_files_with_extensions("py", "txt"):
+            try:
+                if "SKLearnModel" in source_file.read_text(encoding="utf-8"):
+                    return True
+            except Exception:
+                continue
         return False
 
     def _distribution_model_roles(
         self,
-    ) -> set[Literal["huggingface_model", "onnx_model", "sklearn_model"]]:
+    ) -> set[_MODEL_ROLES]:
         return {
             d.role for d in self._meta.distributions if d.role in self._MODEL_DIST_ROLES
         }
+
+    def _detect_model_type(
+        self,
+    ) -> _MODEL_ROLES:
+        """
+        Detect a single model type from local artifacts first, then metadata roles.
+        Raises when none or multiple candidates are detected.
+        """
+        detectors: dict[Dataset._MODEL_ROLES, Callable[[], bool]] = {
+            "onnx_model": lambda: self._find_file_by_extension("onnx") is not None,
+            "huggingface_model": self._has_local_hf_artifacts,
+            "sklearn_model": self._has_local_sklearn_artifacts,
+        }
+        local_candidates = {role for role, detect in detectors.items() if detect()}
+
+        if len(local_candidates) == 1:
+            return next(iter(local_candidates))  # type: ignore
+        if len(local_candidates) > 1:
+            detected = ", ".join(sorted(local_candidates))
+            raise ValueError(
+                f"Ambiguous local model artifacts detected ({detected}). Keep only one model type."
+            )
+
+        roles = self._distribution_model_roles()
+        if len(roles) == 1:
+            return next(iter(roles))
+        if len(roles) > 1:
+            detected = ", ".join(sorted(roles))
+            raise ValueError(
+                f"Ambiguous model roles in metadata ({detected}). Keep only one role."
+            )
+
+        raise ValueError(
+            "Could not detect model type. Expected exactly one of: ONNX (.onnx), "
+            "Hugging Face (config.json), or sklearn (SKLearnModel source)."
+        )
 
     def _load_sidecar_metadata(
         self, target_role: str, target_format: Optional[str] = None
@@ -374,15 +430,7 @@ class Dataset:
         if not self._get_search_paths():
             return None
 
-        dist = next(
-            (
-                d
-                for d in self._meta.distributions
-                if d.role == target_role
-                and (target_format is None or d.format == target_format)
-            ),
-            None,
-        )
+        dist = self._first_distribution_by_role(target_role, target_format)
         if not dist:
             return None
 
@@ -401,6 +449,29 @@ class Dataset:
                         f"Warning: Failed to parse local {target_format} metadata: {e}"
                     )
         return None
+
+    def _sklearn_candidate_paths(self) -> list[Path]:
+        """Build sklearn source candidates with metadata-preferred paths first."""
+        candidate_paths: list[Path] = []
+        seen: set[Path] = set()
+
+        sklearn_dist = self._first_distribution_by_role("sklearn_model")
+        if sklearn_dist:
+            base_name = sklearn_dist.get_filename()
+            suffix_candidates = ("", ".py", ".txt")
+            for root in self._get_search_paths():
+                for suffix in suffix_candidates:
+                    candidate = root / f"{base_name}{suffix}"
+                    if candidate.exists() and candidate not in seen:
+                        seen.add(candidate)
+                        candidate_paths.append(candidate)
+
+        for candidate in self._iter_files_with_extensions("py", "txt"):
+            if candidate not in seen:
+                seen.add(candidate)
+                candidate_paths.append(candidate)
+
+        return candidate_paths
 
     def _load_as_onnx_model(
         self, providers: Optional[list]
@@ -449,29 +520,10 @@ class Dataset:
             preloaded_metadata=meta,
         )
 
-    def _load_as_sklearn_model(self) -> SKLearnModel:
+    def _load_as_sklearn_model(self) -> Tuple[Any, Any, Dict[str, Any]]:
         """Internal handler for sklearn-style models."""
-        candidate_paths: list[Path] = []
-
-        sklearn_dist = next(
-            (d for d in self._meta.distributions if d.role == "sklearn_model"), None
-        )
-        if sklearn_dist:
-            base_name = sklearn_dist.get_filename()
-            suffix_candidates = ["", ".py", ".txt"]
-            for root in self._get_search_paths():
-                for suffix in suffix_candidates:
-                    candidate = root / f"{base_name}{suffix}"
-                    if candidate.exists() and candidate not in candidate_paths:
-                        candidate_paths.append(candidate)
-
-        for root in self._get_search_paths():
-            for path in root.glob("*.py"):
-                if path not in candidate_paths:
-                    candidate_paths.append(path)
-            for path in root.glob("*.txt"):
-                if path not in candidate_paths:
-                    candidate_paths.append(path)
+        candidate_paths = self._sklearn_candidate_paths()
+        meta = self._load_sidecar_metadata("sklearn_model") or {}
 
         if not candidate_paths:
             raise FileNotFoundError(
@@ -481,7 +533,8 @@ class Dataset:
         errors = []
         for candidate in candidate_paths:
             try:
-                return load_sklearn_model(candidate)
+                model = load_sklearn_model(candidate)
+                return model, None, meta
             except Exception as e:
                 errors.append(f"{candidate.name}: {e}")
 
@@ -499,89 +552,27 @@ class Dataset:
         trust_remote_code: bool = False,
         load_task_specific_head: bool = True,
         onnx_providers: Optional[list] = None,
-    ) -> Union[Tuple[Any, Any, Dict[str, Any]], SKLearnModel]:
+    ) -> Tuple[Any, Any, Dict[str, Any]]:
         """
-        Load model according to distribution role (huggingface_model, onnx_model,
-        sklearn_model). If no explicit role is present, local artifact heuristics are
-        used as a fallback.
+        Detect and load exactly one model type (huggingface_model, onnx_model, or
+        sklearn_model). Returns a triplet of (model, processor/tokenizer_or_none, metadata).
         """
-        roles = self._distribution_model_roles()
-
-        if len(roles) == 1:
-            role = next(iter(roles))
-            if role == "onnx_model":
-                return self._load_as_onnx_model(onnx_providers)
-            if role == "huggingface_model":
-                return self._load_as_hf_model(
-                    model_dir,
-                    token,
-                    device_map,
-                    dtype,
-                    trust_remote_code,
-                    load_task_specific_head,
-                )
-            return self._load_as_sklearn_model()
-
-        if len(roles) > 1:
-            # Prefer a role that is also reflected by local artifacts.
-            if "onnx_model" in roles and self._find_file_by_extension("onnx"):
-                return self._load_as_onnx_model(onnx_providers)
-            if "huggingface_model" in roles and self._has_local_hf_artifacts():
-                return self._load_as_hf_model(
-                    model_dir,
-                    token,
-                    device_map,
-                    dtype,
-                    trust_remote_code,
-                    load_task_specific_head,
-                )
-            if "sklearn_model" in roles and self._has_local_sklearn_artifacts():
-                return self._load_as_sklearn_model()
-
-            # No clear local discriminator, keep deterministic fallback order.
-            if "onnx_model" in roles:
-                return self._load_as_onnx_model(onnx_providers)
-            if "sklearn_model" in roles:
-                return self._load_as_sklearn_model()
-
-            return self._load_as_hf_model(
+        model_type = self._detect_model_type()
+        loaders: dict[
+            Dataset._MODEL_ROLES, Callable[[], Tuple[Any, Any, Dict[str, Any]]]
+        ] = {
+            "onnx_model": lambda: self._load_as_onnx_model(onnx_providers),
+            "huggingface_model": lambda: self._load_as_hf_model(
                 model_dir,
                 token,
                 device_map,
                 dtype,
                 trust_remote_code,
                 load_task_specific_head,
-            )
-
-        # Fallback path for local/virtual datasets without explicit model roles.
-        if self._find_file_by_extension("onnx") is not None:
-            return self._load_as_onnx_model(onnx_providers)
-        if self._has_local_hf_artifacts():
-            return self._load_as_hf_model(
-                model_dir,
-                token,
-                device_map,
-                dtype,
-                trust_remote_code,
-                load_task_specific_head,
-            )
-        if self._has_local_sklearn_artifacts():
-            return self._load_as_sklearn_model()
-
-        if not self.is_model:
-            raise ValueError(
-                "No model distribution found in metadata and no local model artifacts were detected."
-            )
-
-        # Keep backward compatibility: model datasets without explicit role default to HF.
-        return self._load_as_hf_model(
-            model_dir,
-            token,
-            device_map,
-            dtype,
-            trust_remote_code,
-            load_task_specific_head,
-        )
+            ),
+            "sklearn_model": self._load_as_sklearn_model,
+        }
+        return loaders[model_type]()
 
     def __repr__(self) -> str:
         icon = "🧠" if self.is_model else "📊"
