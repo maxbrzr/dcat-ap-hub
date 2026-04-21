@@ -2,26 +2,22 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Callable, Dict, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Literal, Optional, Tuple, Union, cast
 
 import requests
 
-from dcat_ap_hub.core.files import FileCollection
-from dcat_ap_hub.internals.constants import HF_FORMAT, ONNX_FORMAT
-from dcat_ap_hub.internals.integrations import (
-    load_hf_model,
-    load_onnx_model,
-    load_sklearn_model,
-)
-from dcat_ap_hub.internals.loaders import scan_directory
-from dcat_ap_hub.internals.models import DatasetMetadata, Distribution
-from dcat_ap_hub.internals.parser import (
+from dcat_ap_hub.files.files import FileCollection, scan_directory
+from dcat_ap_hub.integrations.integrations import load_model as load_with_integration
+from dcat_ap_hub.integrations.models import BackendName, LoadOptions, ModelSource
+from dcat_ap_hub.metadata.constants import HF_FORMAT, ONNX_FORMAT
+from dcat_ap_hub.metadata.models import DatasetMetadata, Distribution
+from dcat_ap_hub.metadata.parsing import (
     JSONLD_ACCEPT_HEADER,
     fetch_and_parse,
     parse_local_file,
 )
-from dcat_ap_hub.internals.processor import apply_processor_logic
-from dcat_ap_hub.internals.transfer import download_dataset_files
+from dcat_ap_hub.metadata.transfer import download_dataset_files
+from dcat_ap_hub.processing.processor import apply_processor_logic
 
 
 class Dataset:
@@ -31,6 +27,11 @@ class Dataset:
 
     _MODEL_DIST_ROLES = ("huggingface_model", "onnx_model", "sklearn_model")
     _MODEL_ROLES = Literal["huggingface_model", "onnx_model", "sklearn_model"]
+    _ROLE_TO_BACKEND = {
+        "huggingface_model": BackendName.HUGGINGFACE,
+        "onnx_model": BackendName.ONNX,
+        "sklearn_model": BackendName.SKLEARN,
+    }
 
     def __init__(
         self, meta: DatasetMetadata, local_data_path: Optional[Path] = None
@@ -402,7 +403,7 @@ class Dataset:
         local_candidates = {role for role, detect in detectors.items() if detect()}
 
         if len(local_candidates) == 1:
-            return next(iter(local_candidates))  # type: ignore
+            return cast(Dataset._MODEL_ROLES, next(iter(local_candidates)))
         if len(local_candidates) > 1:
             detected = ", ".join(sorted(local_candidates))
             raise ValueError(
@@ -411,7 +412,7 @@ class Dataset:
 
         roles = self._distribution_model_roles()
         if len(roles) == 1:
-            return next(iter(roles))
+            return cast(Dataset._MODEL_ROLES, next(iter(roles)))
         if len(roles) > 1:
             detected = ", ".join(sorted(roles))
             raise ValueError(
@@ -473,73 +474,98 @@ class Dataset:
 
         return candidate_paths
 
-    def _load_as_onnx_model(
-        self, providers: Optional[list]
-    ) -> Tuple[Any, Any, Dict[str, Any]]:
-        """Internal handler for ONNX models."""
-        onnx_path = self._find_file_by_extension("onnx")
-        if not onnx_path:
-            # Fallback check path directly if it was just a mis-detection
-            if self._local_model_path and str(self._local_model_path).endswith(".onnx"):
-                onnx_path = self._local_model_path
+    def _model_sources_for_role(self, role: _MODEL_ROLES) -> list[ModelSource]:
+        """Build ordered integration sources for a detected model role."""
+        if role == "onnx_model":
+            onnx_path = self._find_file_by_extension("onnx")
+            if not onnx_path and self._local_model_path:
+                maybe_onnx = self._local_model_path
+                if maybe_onnx.is_file() and maybe_onnx.suffix.lower() == ".onnx":
+                    onnx_path = maybe_onnx
+            if not onnx_path:
+                raise FileNotFoundError("ONNX file not found in local paths.")
 
-        if not onnx_path:
-            raise FileNotFoundError("ONNX file not found in local paths.")
+            return [
+                ModelSource(
+                    path=onnx_path,
+                    metadata=self._load_sidecar_metadata(
+                        "onnx_model", target_format=ONNX_FORMAT
+                    ),
+                    role=role,
+                )
+            ]
 
-        meta = self._load_sidecar_metadata("onnx_model", target_format=ONNX_FORMAT)
-        return load_onnx_model(onnx_path, providers=providers, preloaded_metadata=meta)
+        if role == "huggingface_model":
+            local_hf_dir = next(
+                (p for p in self._get_search_paths() if (p / "config.json").exists()),
+                None,
+            )
+            return [
+                ModelSource(
+                    path=local_hf_dir,
+                    model_id=self.title if local_hf_dir is None else None,
+                    metadata=self._load_sidecar_metadata(
+                        "huggingface_model", target_format=HF_FORMAT
+                    ),
+                    role=role,
+                )
+            ]
 
-    def _load_as_hf_model(
+        meta = self._load_sidecar_metadata("sklearn_model") or {}
+        candidates = self._sklearn_candidate_paths()
+        if not candidates:
+            raise FileNotFoundError(
+                "No sklearn model source found. Expected a Python script implementing SKLearnModel."
+            )
+        return [ModelSource(path=path, metadata=meta, role=role) for path in candidates]
+
+    def _build_load_options(
         self,
+        backend: BackendName,
         model_dir: Union[str, Path],
         token: Optional[str],
         device_map: Union[str, Dict],
         dtype: str,
         trust_remote_code: bool,
         load_task_specific_head: bool,
-    ) -> Tuple[Any, Any, Dict[str, Any]]:
-        """Internal handler for Hugging Face models."""
-        # 1. Determine source
-        local_hf_dir = next(
-            (p for p in self._get_search_paths() if (p / "config.json").exists()), None
-        )
-        model_source = str(local_hf_dir.absolute()) if local_hf_dir else self.title
-
-        # 2. Metadata
-        meta = self._load_sidecar_metadata("huggingface_model", target_format=HF_FORMAT)
-
-        # 3. Load
-        return load_hf_model(
-            model_id=model_source,
-            token=token,
-            device_map=device_map,
-            dtype=dtype,
-            trust_remote_code=trust_remote_code,
-            load_task_specific_head=load_task_specific_head,
-            cache_dir=model_dir,
-            preloaded_metadata=meta,
-        )
-
-    def _load_as_sklearn_model(self) -> Tuple[Any, Any, Dict[str, Any]]:
-        """Internal handler for sklearn-style models."""
-        candidate_paths = self._sklearn_candidate_paths()
-        meta = self._load_sidecar_metadata("sklearn_model") or {}
-
-        if not candidate_paths:
-            raise FileNotFoundError(
-                "No sklearn model source found. Expected a Python script implementing SKLearnModel."
+        onnx_providers: Optional[list],
+    ) -> LoadOptions:
+        if backend is BackendName.HUGGINGFACE:
+            return LoadOptions(
+                token=token,
+                cache_dir=model_dir,
+                device_map=device_map,
+                dtype=dtype,
+                trust_remote_code=trust_remote_code,
+                load_task_specific_head=load_task_specific_head,
             )
+        if backend is BackendName.ONNX:
+            return LoadOptions(onnx_providers=onnx_providers)
+        return LoadOptions()
 
-        errors = []
-        for candidate in candidate_paths:
+    def _load_with_sources(
+        self,
+        backend: BackendName,
+        sources: list[ModelSource],
+        options: LoadOptions,
+    ) -> Tuple[Any, Any, Dict[str, Any]]:
+        errors: list[str] = []
+        for source in sources:
             try:
-                model = load_sklearn_model(candidate)
-                return model, None, meta
+                loaded = load_with_integration(
+                    source=source,
+                    options=options,
+                    backend=backend,
+                )
+                return loaded.as_tuple()
             except Exception as e:
-                errors.append(f"{candidate.name}: {e}")
+                location = (
+                    source.path.name if source.path else source.model_id or "<unknown>"
+                )
+                errors.append(f"{location}: {e}")
 
         raise RuntimeError(
-            "Failed to load sklearn model from available candidates. "
+            f"Failed to load {backend.value} model from available candidates. "
             + " | ".join(errors)
         )
 
@@ -557,22 +583,22 @@ class Dataset:
         Detect and load exactly one model type (huggingface_model, onnx_model, or
         sklearn_model). Returns a triplet of (model, processor/tokenizer_or_none, metadata).
         """
-        model_type = self._detect_model_type()
-        loaders: dict[
-            Dataset._MODEL_ROLES, Callable[[], Tuple[Any, Any, Dict[str, Any]]]
-        ] = {
-            "onnx_model": lambda: self._load_as_onnx_model(onnx_providers),
-            "huggingface_model": lambda: self._load_as_hf_model(
-                model_dir,
-                token,
-                device_map,
-                dtype,
-                trust_remote_code,
-                load_task_specific_head,
-            ),
-            "sklearn_model": self._load_as_sklearn_model,
-        }
-        return loaders[model_type]()
+        role = self._detect_model_type()
+        backend = self._ROLE_TO_BACKEND[role]
+        sources = self._model_sources_for_role(role)
+        options = self._build_load_options(
+            backend=backend,
+            model_dir=model_dir,
+            token=token,
+            device_map=device_map,
+            dtype=dtype,
+            trust_remote_code=trust_remote_code,
+            load_task_specific_head=load_task_specific_head,
+            onnx_providers=onnx_providers,
+        )
+        return self._load_with_sources(
+            backend=backend, sources=sources, options=options
+        )
 
     def __repr__(self) -> str:
         icon = "🧠" if self.is_model else "📊"

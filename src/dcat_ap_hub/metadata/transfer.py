@@ -9,8 +9,8 @@ from pathlib import Path
 import requests
 from tqdm import tqdm
 
-from dcat_ap_hub.internals.logging import logger
-from dcat_ap_hub.internals.models import DatasetMetadata
+from dcat_ap_hub.metadata.models import DatasetMetadata
+from dcat_ap_hub.utils.logging import logger
 
 
 def _extract_archive(filepath: Path, target_dir: Path) -> None:
@@ -140,17 +140,14 @@ def download_dataset_files(
     for resource in metadata.related_resources:
         # Initial filename derived from title (extension may change during download)
         temp_path = dataset_dir / resource.get_filename()
-        url = resource.best_url
-
-        if not url:
-            logger.warning(f"No URL found for related resource '{resource.title}'")
-            continue
 
         if verbose:
             logger.info(f"Downloading: {resource.title}")
 
         try:
-            final_path = _download_file(url, temp_path, verbose=verbose)
+            final_path = _download_file(
+                resource.download_url, temp_path, verbose=verbose
+            )
 
             # Check for archive extraction
             if final_path.suffix in [".zip", ".tgz"] or final_path.name.endswith(

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Union
 from urllib import request
 
-from dcat_ap_hub.internals.constants import (
+from dcat_ap_hub.metadata.constants import (
     HF_FORMAT,
     HF_METADATA_PROFILE_URI,
     MODEL_TYPE,
@@ -14,8 +14,8 @@ from dcat_ap_hub.internals.constants import (
     PROCESSOR_PROFILE_URI,
     SKLEARN_METADATA_PROFILE_URI,
 )
-from dcat_ap_hub.internals.logging import logger
-from dcat_ap_hub.internals.models import DatasetMetadata, Distribution, RelatedResource
+from dcat_ap_hub.metadata.models import DatasetMetadata, Distribution, RelatedResource
+from dcat_ap_hub.utils.logging import logger
 
 JSONLD_ACCEPT_HEADER = "application/ld+json, application/json;q=0.9, */*;q=0.1"
 
