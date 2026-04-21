@@ -1,4 +1,4 @@
-"""Download and extraction utilities."""
+"""Dataset artifact download and archive extraction utilities."""
 
 import mimetypes
 import os
@@ -14,12 +14,16 @@ from dcat_ap_hub.utils.logging import logger
 
 
 def _extract_archive(filepath: Path, target_dir: Path) -> None:
-    """Recursively extract zip/tar/tgz archives."""
+    """
+    Recursively extract zip/tar/tgz archives.
+
+    Nested archives discovered during extraction are extracted in breadth-first
+    order until no archive files remain.
+    """
 
     def is_archive(f: Path) -> bool:
         return f.suffix == ".zip" or f.name.endswith((".tar.gz", ".tgz"))
 
-    # Queue of (archive_path, extract_to_dir)
     queue = [(filepath, target_dir)]
 
     while queue:
@@ -38,9 +42,10 @@ def _extract_archive(filepath: Path, target_dir: Path) -> None:
 
             if extracted:
                 logger.info(f"[extract] Extracted {current_file.name}")
-                current_file.unlink()  # Delete archive after extraction
+                # Remove extracted archives to keep dataset directories clean.
+                current_file.unlink()
 
-                # Scan for nested archives
+                # Scan extracted files for nested archives.
                 for root, _, files in os.walk(current_target):
                     for name in files:
                         p = Path(root) / name
@@ -51,17 +56,16 @@ def _extract_archive(filepath: Path, target_dir: Path) -> None:
 
 
 def _download_file(url: str, dest_path: Path, verbose: bool = False) -> Path:
-    """Stream download, correct extension via MIME, and return final path."""
+    """Download a file stream to disk and return the final output path."""
     try:
         with requests.get(url, stream=True) as r:
             r.raise_for_status()
 
-            # Correct extension based on Content-Type, IF no extension present or mismatch
+            # Adjust extension using MIME type when safe.
             content_type = r.headers.get("Content-Type", "")
             ext = mimetypes.guess_extension(content_type.split(";")[0])
 
-            # Special case: Prevent overriding valid code extensions with .txt or .conf
-            # These extensions are usually correct from source but served as text/plain
+            # Keep common source/code extensions stable even if server MIME is generic.
             protected_exts = {".py", ".ipynb", ".sh", ".json", ".md", ".yaml", ".yml"}
 
             should_update = (
@@ -76,7 +80,6 @@ def _download_file(url: str, dest_path: Path, verbose: bool = False) -> Path:
 
             total = int(r.headers.get("content-length", 0))
 
-            # Write to disk
             with (
                 open(dest_path, "wb") as f,
                 tqdm(
@@ -103,7 +106,12 @@ def download_dataset_files(
     force: bool = False,
     verbose: bool = False,
 ) -> Path:
-    """Orchestrate download and extraction for a dataset."""
+    """
+    Download all distributions and related resources into a dataset directory.
+
+    Returns:
+        Path to the dataset directory containing downloaded artifacts.
+    """
     dataset_dir = base_dir / metadata.title
 
     if dataset_dir.exists() and not force:
@@ -114,7 +122,7 @@ def download_dataset_files(
     dataset_dir.mkdir(parents=True, exist_ok=True)
 
     for distro in metadata.distributions:
-        # Initial filename derived from title (extension may change during download)
+        # Extension may be corrected later based on response headers.
         temp_path = dataset_dir / distro.get_filename()
         url = distro.best_url
 
@@ -128,7 +136,6 @@ def download_dataset_files(
         try:
             final_path = _download_file(url, temp_path, verbose=verbose)
 
-            # Check for archive extraction
             if final_path.suffix in [".zip", ".tgz"] or final_path.name.endswith(
                 ".tar.gz"
             ):
@@ -138,7 +145,6 @@ def download_dataset_files(
             logger.error(f"Failed to process distribution '{distro.title}': {e}")
 
     for resource in metadata.related_resources:
-        # Initial filename derived from title (extension may change during download)
         temp_path = dataset_dir / resource.get_filename()
 
         if verbose:
@@ -149,7 +155,6 @@ def download_dataset_files(
                 resource.download_url, temp_path, verbose=verbose
             )
 
-            # Check for archive extraction
             if final_path.suffix in [".zip", ".tgz"] or final_path.name.endswith(
                 ".tar.gz"
             ):

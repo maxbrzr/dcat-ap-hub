@@ -1,15 +1,13 @@
-"""Public integration APIs and typed model-loading interfaces."""
+"""Public integration APIs and typed model-loading interfaces.
+
+Consumers should generally import from this module instead of submodules to keep
+their code resilient to internal refactors.
+"""
 
 from dcat_ap_hub.integrations.integrations import (
     DEFAULT_REGISTRY,
     IntegrationRegistry,
-    load_hf_loaded_model,
-    load_hf_model,
     load_model,
-    load_onnx_loaded_model,
-    load_onnx_model,
-    load_sklearn_loaded_model,
-    load_sklearn_model,
 )
 from dcat_ap_hub.integrations.models import (
     BackendName,
@@ -29,11 +27,5 @@ __all__ = [
     "ModelLoader",
     "ModelSource",
     "SKLearnModel",
-    "load_hf_loaded_model",
-    "load_hf_model",
     "load_model",
-    "load_onnx_loaded_model",
-    "load_onnx_model",
-    "load_sklearn_loaded_model",
-    "load_sklearn_model",
 ]

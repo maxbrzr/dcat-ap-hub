@@ -1,3 +1,5 @@
+"""Public package entrypoints for dcat-ap-hub."""
+
 from dcat_ap_hub.dataset import Dataset
 from dcat_ap_hub.files.files import FileCollection
 from dcat_ap_hub.processing.processor import DataProcessor

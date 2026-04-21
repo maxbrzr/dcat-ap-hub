@@ -1,4 +1,4 @@
-"""JSON-LD fetching and parsing logic."""
+"""JSON-LD parsing and metadata normalization utilities."""
 
 import json
 from pathlib import Path
@@ -16,8 +16,6 @@ from dcat_ap_hub.metadata.constants import (
 )
 from dcat_ap_hub.metadata.models import DatasetMetadata, Distribution, RelatedResource
 from dcat_ap_hub.utils.logging import logger
-
-JSONLD_ACCEPT_HEADER = "application/ld+json, application/json;q=0.9, */*;q=0.1"
 
 
 def _extract_value(field: Union[str, dict, None]) -> str:
@@ -41,7 +39,7 @@ def _extract_list(field: Union[str, List, Dict, None]) -> List[str]:
 
 
 def _extract_lang_value(field: Union[str, List[dict], dict], lang: str = "en") -> str:
-    """Extract language-specific value."""
+    """Extract language-specific value with sensible fallbacks."""
     if isinstance(field, str):
         return field
     if isinstance(field, list):
@@ -55,9 +53,13 @@ def _extract_lang_value(field: Union[str, List[dict], dict], lang: str = "en") -
     return ""
 
 
-def parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
+def _parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
     """
-    Pure logic: converts a raw JSON-LD dictionary into a DatasetMetadata object.
+    Convert raw JSON-LD content to normalized ``DatasetMetadata``.
+
+    Parsing happens in two passes:
+    1. Resolve dataset-level metadata.
+    2. Resolve distributions and related resources.
     """
     entries: List[dict] = data.get("@graph", [])
     dataset_meta = None
@@ -78,18 +80,17 @@ def parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
     if not dataset_meta:
         raise ValueError(f"No dcat:Dataset found in {source_name}")
 
-    # 2. Second pass: Parse distributions and related resources
+    # Second pass: parse distributions and related resources.
     related_resources = []
 
     for entry in entries:
         types = _extract_list(entry.get("@type", []))
 
-        # Determine role and attributes
         conforms_to = _extract_list(entry.get("dct:conformsTo", []))
         format = _extract_value(entry.get("dct:format", ""))
 
         if "dcat:Distribution" in types:
-            # Determine role for Distribution (data, model)
+            # Infer distribution role for backend/model dispatch.
             dist_role = "data"
 
             if HF_METADATA_PROFILE_URI in conforms_to or format == HF_FORMAT:
@@ -111,16 +112,13 @@ def parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
             )
 
         elif "rdfs:Resource" in types:
-            # It's a related resource (processor, notebook)
-            rel_role = "processor"  # Default
+            rel_role = "processor"
             title = _extract_lang_value(entry.get("dct:title", "")).lower()
 
             if PROCESSOR_PROFILE_URI in conforms_to:
                 rel_role = "processor"
             elif "ipynb" in format or "notebook" in title:
                 rel_role = "notebook"
-
-            # The definition of "processor" is broad (script, tool), so default is acceptable if not explicitly notebook
 
             related_resources.append(
                 RelatedResource(
@@ -137,18 +135,21 @@ def parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
     return dataset_meta
 
 
+JSONLD_ACCEPT_HEADER = "application/ld+json, application/json;q=0.9, */*;q=0.1"
+
+
 def fetch_and_parse(url: str, verbose: bool = False) -> DatasetMetadata:
-    """Fetch from web and parse."""
+    """Fetch JSON-LD metadata from the web and parse it."""
     if verbose:
         logger.info(f"Fetching: {url}")
     req = request.Request(url, headers={"Accept": JSONLD_ACCEPT_HEADER})
     with request.urlopen(req) as response:
         data = json.load(response)
-    return parse_json_content(data, url)
+    return _parse_json_content(data, url)
 
 
 def parse_local_file(path: Path) -> DatasetMetadata:
-    """Read from disk and parse."""
+    """Read local JSON/JSON-LD metadata and parse it."""
     text = path.read_text(encoding="utf-8")
     data = json.loads(text)
-    return parse_json_content(data, str(path))
+    return _parse_json_content(data, str(path))

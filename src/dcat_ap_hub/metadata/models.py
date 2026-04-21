@@ -27,7 +27,7 @@ def _append_hash_before_extension(filename: str, hash_suffix: str) -> str:
 
 @dataclass
 class Distribution:
-    """Represents a specific representation of a dataset (file/resource)."""
+    """Represents one downloadable/accessed distribution entry."""
 
     title: str
     description: str
@@ -38,7 +38,7 @@ class Distribution:
 
     @property
     def best_url(self) -> str:
-        """Return download_url if available, else access_url."""
+        """Return the preferred download URL (fallback to access URL)."""
         return self.download_url or self.access_url
 
     def get_filename(self) -> str:
@@ -51,7 +51,7 @@ class Distribution:
 
 @dataclass
 class RelatedResource:
-    """Represents a related resource (e.g. processor script, notebook)."""
+    """Represents an auxiliary resource (for example processor or notebook)."""
 
     title: str
     description: str
@@ -68,7 +68,7 @@ class RelatedResource:
 
 @dataclass
 class DatasetMetadata:
-    """Internal metadata representation."""
+    """Internal normalized metadata representation used by the library."""
 
     title: str
     description: str

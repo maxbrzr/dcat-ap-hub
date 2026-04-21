@@ -3,7 +3,7 @@ from typing import Any
 from numpy import ndarray
 
 from dcat_ap_hub.integrations.sklearn import SKLearnModel
-from dcat_ap_hub.processing.utils import from_import_or_install
+from dcat_ap_hub.utils.utils import from_import_or_install
 
 
 class TabPFNClassifier(SKLearnModel):

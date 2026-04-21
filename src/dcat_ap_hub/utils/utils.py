@@ -1,3 +1,5 @@
+"""Small utility helpers used by optional processing integrations."""
+
 import importlib
 import subprocess
 import sys
@@ -5,13 +7,18 @@ from typing import Any
 
 
 def install_package(package: str) -> None:
+    """Install a package into the active Python environment via pip."""
     subprocess.check_call([sys.executable, "-m", "pip", "install", package])
 
 
 def from_import_or_install(package: str, module_path: str, symbol: str) -> Any:
     """
-    Ensures `package` is installed, then loads `symbol` from `module_path`.
-    Example:
+    Import ``symbol`` from ``module_path``, installing ``package`` if needed.
+
+    This helper is intentionally simple and best suited for interactive or
+    notebook workflows where auto-install behavior is acceptable.
+
+    Examples:
       from_import_or_install("tabpfn", "tabpfn", "TabPFNRegressor")
       from_import_or_install("tabpfn", "tabpfn.constants", "ModelVersion")
     """

@@ -1,3 +1,5 @@
+"""Lazy file container abstractions for downloaded/processed artifacts."""
+
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
@@ -16,19 +18,17 @@ class LazyFile:
 
     @property
     def data(self) -> Any:
-        """Load and return the file content."""
-        # Return cached data after first successful load.
+        """Load and cache file content on first access."""
         if self._data is not None:
             return self._data
 
-        # Avoid retrying after a known failure.
+        # Avoid repeated failures for unsupported or broken files.
         if self._error:
             return None
 
         try:
             loader = LOADER_REGISTRY.resolve(self.path)
         except ValueError as exc:
-            # Persist unsupported-type errors to keep access idempotent.
             self._error = str(exc)
             return None
 
@@ -36,7 +36,6 @@ class LazyFile:
             self._data = loader.load(self.path)
             return self._data
         except Exception as e:
-            # Memoize runtime load errors and surface them via repr/logger.
             self._error = str(e)
             logger.error(f"Error loading {self.path.name}: {e}")
             return None
@@ -49,9 +48,13 @@ class LazyFile:
 
 
 def scan_directory(directory: Path) -> Dict[str, LazyFile]:
-    """Scan directory and return a dict of LazyFiles keyed by filename."""
-    # Default to the shared registry unless a custom one is injected.
-    results = {}
+    """
+    Scan a directory recursively and return lazy file objects keyed by filename.
+
+    Note:
+        Duplicate basenames in nested folders overwrite earlier entries.
+    """
+    results: Dict[str, LazyFile] = {}
     for f in directory.rglob("*"):
         if f.is_file():
             # Keyed by basename; duplicate filenames in subfolders will overwrite.
@@ -60,13 +63,14 @@ def scan_directory(directory: Path) -> Dict[str, LazyFile]:
 
 
 class FileCollection:
-    """Smart container for downloaded files."""
+    """Dictionary-like lazy container for file artifacts."""
 
     def __init__(self, root: Path, files: Dict[str, LazyFile]):
         self.root = root
         self._files = files
 
     def __getitem__(self, key: str) -> LazyFile:
+        """Lookup by exact filename or unique partial match."""
         if key in self._files:
             return self._files[key]
         matches = [k for k in self._files if key in k]
@@ -77,12 +81,15 @@ class FileCollection:
         raise KeyError(f"Ambiguous key '{key}'. Matches: {matches}")
 
     def __iter__(self) -> Iterator[LazyFile]:
+        """Iterate over lazy file entries."""
         return iter(self._files.values())
 
     def __len__(self) -> int:
+        """Return number of tracked files."""
         return len(self._files)
 
     def filter_by(self, ext: str) -> List[LazyFile]:
+        """Return all files matching a file extension."""
         target = ext.lower().lstrip(".")
         return [
             f
@@ -92,6 +99,7 @@ class FileCollection:
 
     @property
     def dataframes(self) -> List[Any]:
+        """Convenience accessor for tabular files loaded as DataFrames."""
         return [
             f.data
             for f in self._files.values()
@@ -100,4 +108,5 @@ class FileCollection:
         ]
 
     def __repr__(self) -> str:
+        """Return a compact summary for interactive sessions."""
         return f"<FileCollection: {len(self._files)} files in '{self.root.name}'>"

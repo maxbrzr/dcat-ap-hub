@@ -1,4 +1,4 @@
-"""Lazy loading logic for various file formats."""
+"""Lazy file-type loader implementations and loader registry."""
 
 import json
 from abc import ABC, abstractmethod
@@ -15,6 +15,8 @@ from pypdf import PdfReader
 
 
 class FileType(Enum):
+    """Supported file extensions for built-in lazy loaders."""
+
     CSV = "csv"
     XLSX = "xlsx"
     JSON = "json"
@@ -40,6 +42,8 @@ class BaseLoader(ABC):
 
 
 class CsvLoader(BaseLoader):
+    """CSV loader with basic encoding sniffing and separator inference."""
+
     file_types = (FileType.CSV,)
 
     def _detect_encoding(self, path: Path, nbytes: int = 100000) -> str | None:
@@ -54,6 +58,8 @@ class CsvLoader(BaseLoader):
 
 
 class ExcelLoader(BaseLoader):
+    """Excel workbook loader."""
+
     file_types = (FileType.XLSX,)
 
     def load(self, path: Path) -> Any:
@@ -61,6 +67,8 @@ class ExcelLoader(BaseLoader):
 
 
 class JsonLoader(BaseLoader):
+    """JSON/JSON-LD loader."""
+
     file_types = (FileType.JSON, FileType.JSONLD)
 
     def load(self, path: Path) -> Any:
@@ -68,6 +76,8 @@ class JsonLoader(BaseLoader):
 
 
 class ParquetLoader(BaseLoader):
+    """Parquet loader."""
+
     file_types = (FileType.PARQUET,)
 
     def load(self, path: Path) -> Any:
@@ -75,6 +85,8 @@ class ParquetLoader(BaseLoader):
 
 
 class ImageLoader(BaseLoader):
+    """Image loader returning NumPy arrays via OpenCV."""
+
     file_types = (FileType.PNG, FileType.JPG)
 
     def load(self, path: Path) -> Any:
@@ -82,6 +94,8 @@ class ImageLoader(BaseLoader):
 
 
 class TextLoader(BaseLoader):
+    """UTF text file loader."""
+
     file_types = (FileType.TXT,)
 
     def load(self, path: Path) -> Any:
@@ -89,6 +103,8 @@ class TextLoader(BaseLoader):
 
 
 class PdfLoader(BaseLoader):
+    """PDF loader returning ``pypdf.PdfReader``."""
+
     file_types = (FileType.PDF,)
 
     def load(self, path: Path) -> Any:
@@ -96,6 +112,8 @@ class PdfLoader(BaseLoader):
 
 
 class HtmlLoader(BaseLoader):
+    """HTML loader returning ``BeautifulSoup`` objects."""
+
     file_types = (FileType.HTML,)
 
     def load(self, path: Path) -> Any:
@@ -103,6 +121,8 @@ class HtmlLoader(BaseLoader):
 
 
 class XmlLoader(BaseLoader):
+    """XML loader returning ``BeautifulSoup`` objects."""
+
     file_types = (FileType.XML,)
 
     def load(self, path: Path) -> Any:
@@ -110,6 +130,8 @@ class XmlLoader(BaseLoader):
 
 
 class NpyLoader(BaseLoader):
+    """NumPy binary array loader."""
+
     file_types = (FileType.NPY,)
 
     def load(self, path: Path) -> Any:
@@ -151,12 +173,13 @@ class LoaderRegistry:
         return
 
     def register(self, loader: BaseLoader) -> None:
-        # Later registrations override earlier ones for the same extension.
+        """Register a loader for all declared file types."""
+        # Later registrations intentionally override previous mappings.
         for file_type in loader.file_types:
             self.loaders[file_type] = loader
 
     def resolve(self, path: Path) -> BaseLoader:
-        # Normalize extension values like ".CSV" to enum keys.
+        """Resolve the loader for a given file path based on extension."""
         ext = path.suffix.lower().lstrip(".")
         try:
             ft = FileType(ext)
