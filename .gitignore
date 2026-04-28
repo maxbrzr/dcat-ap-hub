@@ -28,3 +28,4 @@ demo
 .pytest_cache/
 .uv-cache/
 .ruff_cache/
+.env

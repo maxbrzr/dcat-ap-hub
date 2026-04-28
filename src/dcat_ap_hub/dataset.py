@@ -18,7 +18,7 @@ from dcat_ap_hub.integrations.integrations import load_model as load_with_integr
 from dcat_ap_hub.integrations.models import BackendName, LoadOptions, ModelSource
 from dcat_ap_hub.metadata.models import DatasetMetadata, Distribution
 from dcat_ap_hub.metadata.parsing import (
-    JSONLD_ACCEPT_HEADER,
+    build_metadata_request_headers,
     fetch_and_parse,
     parse_local_file,
 )
@@ -197,7 +197,7 @@ class Dataset:
                 print("Saving metadata for offline usage...")
             response = requests.get(
                 self._meta.source_url,
-                headers={"Accept": JSONLD_ACCEPT_HEADER},
+                headers=build_metadata_request_headers(),
                 timeout=10,
             )
             if response.status_code == 200:
