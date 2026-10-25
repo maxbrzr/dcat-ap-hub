@@ -170,3 +170,36 @@ def test_generic_mime_type_keeps_extension_and_html_is_marked(server, tmp_path):
 
     suffixes = sorted(f.path.suffix for f in files if f.path.name != "dcat-metadata.jsonld")
     assert suffixes == [".html", ".parquet"]
+
+
+def test_access_url_fallback_warns(server, tmp_path, caplog):
+    root, base = server
+    (root / "landing.html").write_text("<html>record page</html>")
+    (root / "data.csv").write_text("x\n1\n")
+    record = {
+        "@graph": [
+            {"@id": f"{base}/d", "@type": "dcat:Dataset", "dct:title": "Example"},
+            {
+                "@type": "dcat:Distribution",
+                "dct:title": "Zenodo record access",
+                "dcat:accessURL": f"{base}/landing.html",
+            },
+            {
+                "@type": "dcat:Distribution",
+                "dct:title": "data.csv",
+                "dcat:accessURL": f"{base}/landing.html",
+                "dcat:downloadURL": f"{base}/data.csv",
+            },
+        ]
+    }
+    (root / "record.jsonld").write_text(json.dumps(record))
+
+    with caplog.at_level("WARNING", logger="dcat-ap-hub"):
+        Dataset.from_url(f"{base}/record.jsonld").download(
+            data_dir=tmp_path / "data", verbose=False
+        )
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1
+    assert "'Zenodo record access' has no dcat:downloadURL" in warnings[0]
+    assert f"{base}/landing.html" in warnings[0]

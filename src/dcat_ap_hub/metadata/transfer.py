@@ -158,6 +158,13 @@ def download_dataset_files(
             logger.warning(f"No URL found for distribution '{distro.title}'")
             continue
 
+        if not distro.download_url:
+            logger.warning(
+                f"Distribution '{distro.title}' has no dcat:downloadURL; falling "
+                f"back to its dcat:accessURL {url}, which is often a landing or "
+                "login page rather than the data (access may be restricted)."
+            )
+
         if verbose:
             logger.info(f"Downloading: {distro.title}")
 
