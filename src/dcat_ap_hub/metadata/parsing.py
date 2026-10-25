@@ -3,16 +3,17 @@
 import json
 import os
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Any, Dict, List, Union
 from urllib import request
 
 from dcat_ap_hub.metadata.constants import (
     HF_FORMAT,
     HF_METADATA_PROFILE_URI,
+    CANONICAL_PREFIXES,
     MODEL_TYPE,
     ONNX_FORMAT,
     ONNX_METADATA_PROFILE_URI,
-    PROCESSOR_PROFILE_URI,
+    PROCESSOR_PROFILE_URIS,
     SKLEARN_METADATA_PROFILE_URI,
 )
 from dcat_ap_hub.metadata.models import DatasetMetadata, Distribution, RelatedResource
@@ -54,6 +55,91 @@ def _extract_lang_value(field: Union[str, List[dict], dict], lang: str = "en") -
     return ""
 
 
+# Dataset properties that link a dataset to auxiliary resources.
+_RELATION_KEYS = ("dct:relation", "dct:references", "dct:hasPart", "foaf:page")
+
+
+def _context_prefixes(context: Any) -> Dict[str, str]:
+    """Collect ``prefix -> namespace`` mappings from a JSON-LD ``@context``."""
+    prefixes: Dict[str, str] = {}
+    contexts = context if isinstance(context, list) else [context]
+    for item in contexts:
+        if not isinstance(item, dict):
+            continue
+        for key, value in item.items():
+            if key.startswith("@"):
+                continue
+            iri = value.get("@id") if isinstance(value, dict) else value
+            if isinstance(iri, str) and iri.endswith(("#", "/")):
+                prefixes[key] = iri
+    return prefixes
+
+
+def _expand(term: str, prefixes: Dict[str, str]) -> str:
+    """Expand a compact IRI (``prefix:name``) using known prefixes."""
+    prefix, sep, local = term.partition(":")
+    if sep and not local.startswith("//") and prefix in prefixes:
+        return prefixes[prefix] + local
+    return term
+
+
+def _compact(iri: str) -> str:
+    """Compact a full IRI to the canonical prefix this parser reads."""
+    for prefix, namespace in CANONICAL_PREFIXES.items():
+        if iri.startswith(namespace):
+            return f"{prefix}:{iri[len(namespace):]}"
+    return iri
+
+
+def _normalize_term(term: str, prefixes: Dict[str, str]) -> str:
+    return _compact(_expand(term, prefixes))
+
+
+def _normalize_node(node: Any, prefixes: Dict[str, str]) -> Any:
+    """
+    Rewrite keys and ``@type`` values to canonical prefixes.
+
+    This lets metadata using other prefixes (``dcterms:``), full IRIs, or a
+    custom ``@context`` parse the same way as the canonical compact form.
+    ``@id`` values that are compact IRIs are expanded to full IRIs.
+    """
+    if isinstance(node, list):
+        return [_normalize_node(item, prefixes) for item in node]
+    if not isinstance(node, dict):
+        return node
+    normalized: Dict[str, Any] = {}
+    for key, value in node.items():
+        if key == "@type":
+            types = value if isinstance(value, list) else [value]
+            normalized[key] = [
+                _normalize_term(item, prefixes) if isinstance(item, str) else item
+                for item in types
+            ]
+        elif key == "@id" and isinstance(value, str):
+            normalized[key] = _expand(value, prefixes)
+        elif key.startswith("@"):
+            normalized[key] = value
+        else:
+            normalized[_normalize_term(key, prefixes)] = _normalize_node(value, prefixes)
+    return normalized
+
+
+def _graph_entries(data: Any) -> List[dict]:
+    """Return normalized graph nodes from a JSON-LD document of any common shape."""
+    if isinstance(data, list):
+        return [entry for item in data for entry in _graph_entries(item)]
+    if not isinstance(data, dict):
+        return []
+    prefixes = {**CANONICAL_PREFIXES, "dcterms": CANONICAL_PREFIXES["dct"]}
+    prefixes.update(_context_prefixes(data.get("@context")))
+    nodes = data["@graph"] if "@graph" in data else [data]
+    if isinstance(nodes, dict):
+        nodes = [nodes]
+    return [
+        _normalize_node(node, prefixes) for node in nodes if isinstance(node, dict)
+    ]
+
+
 def _parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
     """
     Convert raw JSON-LD content to normalized ``DatasetMetadata``.
@@ -62,9 +148,10 @@ def _parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
     1. Resolve dataset-level metadata.
     2. Resolve distributions and related resources.
     """
-    entries: List[dict] = data.get("@graph", [])
+    entries = _graph_entries(data)
     dataset_meta = None
     distros = []
+    linked_ids: set[str] = set()
 
     for entry in entries:
         types = _extract_list(entry.get("@type", []))
@@ -77,6 +164,8 @@ def _parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
                 is_model=is_model,
                 source_url=source_name,
             )
+            for key in _RELATION_KEYS:
+                linked_ids.update(_extract_list(entry.get(key, [])))
 
     if not dataset_meta:
         raise ValueError(f"No dcat:Dataset found in {source_name}")
@@ -116,7 +205,7 @@ def _parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
             rel_role = "processor"
             title = _extract_lang_value(entry.get("dct:title", "")).lower()
 
-            if PROCESSOR_PROFILE_URI in conforms_to:
+            if PROCESSOR_PROFILE_URIS.intersection(conforms_to):
                 rel_role = "processor"
             elif "ipynb" in format or "notebook" in title:
                 rel_role = "notebook"
@@ -126,8 +215,10 @@ def _parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
                     title=_extract_lang_value(entry.get("dct:title", "")),
                     description=_extract_lang_value(entry.get("dct:description", "")),
                     format=format,
-                    download_url=_extract_value(entry.get("dcat:downloadURL", "")),
+                    download_url=_extract_value(entry.get("dcat:downloadURL", ""))
+                    or _extract_value(entry.get("dcat:accessURL", "")),
                     role=rel_role,
+                    linked=entry.get("@id") in linked_ids,
                 )
             )
 

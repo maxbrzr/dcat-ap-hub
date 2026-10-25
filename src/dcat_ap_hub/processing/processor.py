@@ -6,15 +6,28 @@ import sys
 import uuid
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Sequence
+from types import ModuleType
+from typing import Callable, Protocol, Sequence, runtime_checkable
+
+
+@runtime_checkable
+class ProcessorLike(Protocol):
+    """Structural interface every processor satisfies."""
+
+    def process(self, input_files: Sequence[Path], output_dir: Path) -> None: ...
 
 
 class DataProcessor(ABC):
     """
-    Base class for dataset processors referenced in metadata resources.
+    Optional base class for dataset processors referenced in metadata resources.
 
-    Custom processor scripts should subclass this type and implement
-    ``process(...)``.
+    Processor scripts do not need to import dcat-ap-hub. A script is accepted
+    when it provides, in order of precedence:
+
+    1. a class inheriting ``DataProcessor``;
+    2. a class defined in the script with a ``process(input_files, output_dir)``
+       method;
+    3. a module-level function ``process(input_files, output_dir)``.
     """
 
     @abstractmethod
@@ -58,24 +71,13 @@ def apply_processor_logic(
         sys.modules[unique_mod_name] = module
         spec.loader.exec_module(module)
 
-        processor_class = None
-
-        for _, obj in inspect.getmembers(module, inspect.isclass):
-            if issubclass(obj, DataProcessor) and obj is not DataProcessor:
-                processor_class = obj
-                break
-
-        if not processor_class:
-            raise AttributeError(
-                f"Module '{parser_path.name}' must contain a class inheriting DataProcessor."
-            )
+        name, process = find_processor(module)
 
         if verbose:
-            print(f"Found processor class: {processor_class.__name__}")
+            print(f"Found processor: {name}")
             print(f"Processing {len(input_paths)} files...")
 
-        processor_instance = processor_class()
-        processor_instance.process(input_paths, output_dir)
+        process(list(input_paths), output_dir)
 
         if verbose:
             print(f"Success! Output saved to: {output_dir}")
@@ -85,3 +87,37 @@ def apply_processor_logic(
         if unique_mod_name and unique_mod_name in sys.modules:
             del sys.modules[unique_mod_name]
         raise RuntimeError(f"Processor execution failed: {e}") from e
+
+
+def find_processor(
+    module: ModuleType,
+) -> tuple[str, Callable[[Sequence[Path], Path], None]]:
+    """
+    Return a display name and callable for the processor defined in ``module``.
+
+    See :class:`DataProcessor` for the accepted forms and their precedence.
+    Classes imported into the script from elsewhere are ignored.
+    """
+    classes = [
+        obj
+        for _, obj in inspect.getmembers(module, inspect.isclass)
+        if obj.__module__ == module.__name__ or issubclass(obj, DataProcessor)
+    ]
+
+    for obj in classes:
+        if issubclass(obj, DataProcessor) and obj is not DataProcessor:
+            return obj.__name__, obj().process
+
+    for obj in classes:
+        if obj.__module__ == module.__name__ and callable(getattr(obj, "process", None)):
+            return obj.__name__, obj().process
+
+    function = getattr(module, "process", None)
+    if inspect.isfunction(function):
+        return "process()", function
+
+    raise AttributeError(
+        f"Module '{module.__name__}' must define a module-level "
+        "process(input_files, output_dir) function or a class with a process "
+        "method (optionally inheriting DataProcessor)."
+    )

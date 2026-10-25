@@ -28,6 +28,59 @@ This enables the definition of multi-dataset benchmarks as DCAT-AP catalogues, s
 - Entries with `@type` set to `mls:Model` are treated as models.
 - Roles for distributions (`dcat:Distribution`) and related resources (`rdfs:Resource`) can be defined through `dct:conformsTo` and/or `dct:format`, allowing the specification of model types or processors.
 - The `dcat:downloadURL` field identifies the files to be downloaded.
+- Prefixes are normalized: `dcterms:`, full IRIs, or a custom `@context` work the
+  same as `dct:` / `dcat:` / `rdfs:`. Both `{"@graph": [...]}` and single-node
+  documents are accepted.
+
+### Processor Resources
+
+A processor is an `rdfs:Resource` entry. Mark it with
+`dct:conformsTo: "http://example.org/profiles/Processor"` and link it from the
+dataset with `dct:relation` so it is preferred when several resources exist:
+
+```json
+{
+  "@graph": [
+    {
+      "@id": "https://example.org/dataset/1",
+      "@type": "dcat:Dataset",
+      "dct:title": "Example",
+      "dct:relation": {"@id": "https://example.org/dataset/1#processor"}
+    },
+    {
+      "@id": "https://example.org/dataset/1#processor",
+      "@type": "rdfs:Resource",
+      "dct:title": "parser.py",
+      "dct:conformsTo": "http://example.org/profiles/Processor",
+      "dcat:downloadURL": "https://example.org/files/parser.py"
+    }
+  ]
+}
+```
+
+The processor script does not need to import dcat-ap-hub. It must provide one of
+the following, checked in this order:
+
+1. a class inheriting `dcat_ap_hub.DataProcessor`;
+2. a class defined in the script with a `process(input_files, output_dir)` method;
+3. a module-level function:
+
+```python
+def process(input_files: list[Path], output_dir: Path) -> None:
+    ...  # read raw files, write e.g. train.csv and test.csv to output_dir
+```
+
+`input_files` are the top-level files of the dataset folder, excluding the
+processor script, an attached notebook, and `dcat-metadata.jsonld`.
+
+To process a local folder, place the raw files, the processor script, and a
+`dcat-metadata.jsonld` describing them in one directory; the processor file may
+be named after the resource title (`parser.py`):
+
+```python
+ds = Dataset.from_directory("path/to/folder")
+ds.process()  # writes path/to/folder/processed/
+```
 
 ### How To Install
 

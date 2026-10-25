@@ -5,6 +5,20 @@ MODEL_TYPE = "http://www.w3.org/ns/mls#Model"
 
 # Profile URI used to identify processor resources.
 PROCESSOR_PROFILE_URI = "http://example.org/profiles/Processor"
+# All profile URIs accepted as processor markers. Add a stable, resolvable URI
+# here (and switch PROCESSOR_PROFILE_URI to it) once one is registered; keep the
+# legacy value so existing metadata stays valid.
+PROCESSOR_PROFILE_URIS = frozenset({PROCESSOR_PROFILE_URI})
+
+# Namespaces used to normalize JSON-LD terms to the prefixes this parser reads.
+# Keys are the canonical prefixes; values are their namespace IRIs.
+CANONICAL_PREFIXES = {
+    "dcat": "http://www.w3.org/ns/dcat#",
+    "dct": "http://purl.org/dc/terms/",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+    "foaf": "http://xmlns.com/foaf/0.1/",
+    "mls": "http://www.w3.org/ns/mls#",
+}
 
 # Model metadata profiles for backend role inference.
 HF_METADATA_PROFILE_URI = "http://example.org/profiles/HuggingFaceMetadata"

@@ -36,24 +36,33 @@ def _resolve_processor_paths(
     resources: Sequence[RelatedResource],
 ) -> tuple[Path, Optional[Path]]:
     """Resolve local processor and notebook paths from related resources."""
-    processor_item = next((resource for resource in resources if resource.role == "processor"), None)
+    processors = [resource for resource in resources if resource.role == "processor"]
+    # Prefer processors the dataset entry links to explicitly.
+    processors.sort(key=lambda resource: not resource.linked)
+    processor_item = processors[0] if processors else None
     notebook_item = next((resource for resource in resources if resource.role == "notebook"), None)
 
     if not processor_item:
         raise ValueError("No processor found in related resources.")
 
-    processor_path = local_data_path / processor_item.get_filename()
-    notebook_path = local_data_path / notebook_item.get_filename() if notebook_item else None
-
-    if not processor_path.exists():
-        processor_path = local_data_path / f"{processor_item.get_filename()}.py"
-    if not processor_path.exists():
-        raise FileNotFoundError(f"Processor script not found at {processor_path}")
-
-    if notebook_path and not notebook_path.exists():
-        notebook_path = None
-
+    processor_path = _find_local_file(local_data_path, processor_item)
+    if processor_path is None:
+        raise FileNotFoundError(
+            f"Processor script not found in {local_data_path}; tried "
+            f"{', '.join(processor_item.candidate_filenames())}"
+        )
+    notebook_path = (
+        _find_local_file(local_data_path, notebook_item) if notebook_item else None
+    )
     return processor_path, notebook_path
+
+
+def _find_local_file(local_data_path: Path, resource: RelatedResource) -> Optional[Path]:
+    for name in resource.candidate_filenames():
+        for candidate in (local_data_path / name, local_data_path / f"{name}.py"):
+            if candidate.is_file():
+                return candidate
+    return None
 
 
 def build_processor_input_paths(

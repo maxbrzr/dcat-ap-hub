@@ -106,7 +106,9 @@ class Dataset:
 
         # Restore full metadata first when available.
         meta = None
-        for candidate in p.glob("*.jsonld"):
+        # Prefer the conventional sidecar name, then any other JSON-LD file.
+        candidates = sorted(p.glob("*.jsonld"), key=lambda f: f.name != "dcat-metadata.jsonld")
+        for candidate in candidates:
             try:
                 # We use the internal parser directly to get the object
                 meta = parse_local_file(candidate)
