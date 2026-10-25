@@ -49,36 +49,47 @@ class LazyFile:
 
 def scan_directory(directory: Path) -> Dict[str, LazyFile]:
     """
-    Scan a directory recursively and return lazy file objects keyed by filename.
+    Scan a directory recursively and return lazy file objects.
 
-    Note:
-        Duplicate basenames in nested folders overwrite earlier entries.
+    Keys are paths relative to ``directory`` in POSIX form (``inner/a.csv``),
+    so files with the same name in different sub-folders are all kept.
     """
-    results: Dict[str, LazyFile] = {}
-    for f in directory.rglob("*"):
-        if f.is_file():
-            # Keyed by basename; duplicate filenames in subfolders will overwrite.
-            results[f.name] = LazyFile(f)
-    return results
+    return {
+        f.relative_to(directory).as_posix(): LazyFile(f)
+        for f in sorted(directory.rglob("*"))
+        if f.is_file()
+    }
 
 
 class FileCollection:
-    """Dictionary-like lazy container for file artifacts."""
+    """Dictionary-like lazy container for file artifacts, keyed by relative path."""
 
     def __init__(self, root: Path, files: Dict[str, LazyFile]):
         self.root = root
         self._files = files
 
     def __getitem__(self, key: str) -> LazyFile:
-        """Lookup by exact filename or unique partial match."""
+        """
+        Look up a file by relative path, file name, or unique part of its path.
+
+        In that order: an exact relative path (``inner/a.csv``), a file name
+        that occurs once (``a.csv``), then a substring of exactly one path.
+        """
         if key in self._files:
             return self._files[key]
-        matches = [k for k in self._files if key in k]
-        if len(matches) == 1:
-            return self._files[matches[0]]
-        if not matches:
-            raise KeyError(f"File '{key}' not found in {self.root.name}.")
-        raise KeyError(f"Ambiguous key '{key}'. Matches: {matches}")
+        for matches in (
+            [k for k in self._files if k.rsplit("/", 1)[-1] == key],
+            [k for k in self._files if key in k],
+        ):
+            if len(matches) == 1:
+                return self._files[matches[0]]
+            if matches:
+                raise KeyError(f"Ambiguous key '{key}'. Matches: {matches}")
+        raise KeyError(f"File '{key}' not found in {self.root.name}.")
+
+    def keys(self) -> List[str]:
+        """Relative paths of all files."""
+        return list(self._files)
 
     def __iter__(self) -> Iterator[LazyFile]:
         """Iterate over lazy file entries."""
