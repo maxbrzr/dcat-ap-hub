@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional, Sequence
 
+from dcat_ap_hub.metadata.constants import PROCESSOR_PROFILE_URI, SPLIT_FILES
 from dcat_ap_hub.metadata.models import RelatedResource
 from dcat_ap_hub.processing.processor import apply_processor_logic
 
@@ -25,36 +26,33 @@ def find_existing_processed_path(
     if not local_data_path:
         return None
 
+    # Only a complete split counts; a failed run may leave partial output.
     candidate = local_data_path / processed_dir
-    if candidate.exists() and any(candidate.iterdir()):
+    if all((candidate / name).is_file() for name in SPLIT_FILES):
         return candidate
     return None
 
 
-def _resolve_processor_paths(
+def resolve_processor_path(
     local_data_path: Path,
     resources: Sequence[RelatedResource],
-) -> tuple[Path, Optional[Path]]:
-    """Resolve local processor and notebook paths from related resources."""
+) -> Path:
+    """Return the local processor script, preferring ones the dataset links to."""
     processors = [resource for resource in resources if resource.role == "processor"]
-    # Prefer processors the dataset entry links to explicitly.
     processors.sort(key=lambda resource: not resource.linked)
-    processor_item = processors[0] if processors else None
-    notebook_item = next((resource for resource in resources if resource.role == "notebook"), None)
-
-    if not processor_item:
-        raise ValueError("No processor found in related resources.")
-
-    processor_path = _find_local_file(local_data_path, processor_item)
-    if processor_path is None:
+    if not processors:
+        raise ValueError(
+            "No processor found: the metadata needs an rdfs:Resource with "
+            f"dct:conformsTo {PROCESSOR_PROFILE_URI}."
+        )
+    processor = processors[0]
+    path = _find_local_file(local_data_path, processor)
+    if path is None:
         raise FileNotFoundError(
             f"Processor script not found in {local_data_path}; tried "
-            f"{', '.join(processor_item.candidate_filenames())}"
+            f"{', '.join(processor.candidate_filenames())}"
         )
-    notebook_path = (
-        _find_local_file(local_data_path, notebook_item) if notebook_item else None
-    )
-    return processor_path, notebook_path
+    return path
 
 
 def _find_local_file(local_data_path: Path, resource: RelatedResource) -> Optional[Path]:
@@ -76,29 +74,6 @@ def _find_local_file(local_data_path: Path, resource: RelatedResource) -> Option
     return None
 
 
-def build_processor_input_paths(
-    local_data_path: Path,
-    processor_path: Path,
-    notebook_path: Optional[Path] = None,
-) -> list[Path]:
-    """
-    Return processor input files from a dataset directory.
-
-    The processor script, optional notebook, and saved metadata sidecar are
-    excluded from the input list.
-    """
-    input_paths = [
-        path
-        for path in local_data_path.iterdir()
-        if path.is_file()
-        and path.name != processor_path.name
-        and path.name != "dcat-metadata.jsonld"
-    ]
-    if notebook_path:
-        input_paths = [path for path in input_paths if path.name != notebook_path.name]
-    return input_paths
-
-
 def run_processing_pipeline(
     local_data_path: Path,
     resources: Sequence[RelatedResource],
@@ -106,19 +81,20 @@ def run_processing_pipeline(
     verbose: bool = False,
 ) -> Path:
     """
-    Execute dataset processing and return the output directory.
+    Run the dataset's processor on its folder and return the output directory.
 
-    The output directory is created when missing and processor logic is invoked
-    exactly once for the selected processor resource.
+    The processor receives the dataset folder itself and must write every file
+    in ``SPLIT_FILES`` to ``<dataset folder>/<processed_dir>``.
     """
     output_dir = local_data_path / processed_dir
-    processor_path, notebook_path = _resolve_processor_paths(local_data_path, resources)
-    input_paths = build_processor_input_paths(
-        local_data_path=local_data_path,
-        processor_path=processor_path,
-        notebook_path=notebook_path,
-    )
-
+    processor_path = resolve_processor_path(local_data_path, resources)
     output_dir.mkdir(parents=True, exist_ok=True)
-    apply_processor_logic(processor_path, input_paths, output_dir, verbose=verbose)
+    apply_processor_logic(processor_path, local_data_path, output_dir, verbose=verbose)
+    missing = [name for name in SPLIT_FILES if not (output_dir / name).is_file()]
+    if missing:
+        written = sorted(path.name for path in output_dir.iterdir())
+        raise RuntimeError(
+            f"Processor {processor_path.name} did not write {', '.join(missing)} "
+            f"to {output_dir} (found: {', '.join(written) or 'nothing'})."
+        )
     return output_dir

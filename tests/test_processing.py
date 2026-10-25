@@ -5,27 +5,33 @@ from pathlib import Path
 
 import pytest
 
-from dcat_ap_hub import Dataset
-from dcat_ap_hub.metadata.constants import PROCESSOR_PROFILE_URI
+from dcat_ap_hub import Dataset, add_processor
+from dcat_ap_hub.metadata.constants import PROCESSOR_PROFILE_URI, SPLIT_FILES
 from dcat_ap_hub.metadata.parsing import _parse_json_content
 from dcat_ap_hub.processing.processor import apply_processor_logic
 
+# Writes the split files plus a listing of the raw CSVs it saw, recursively.
 FUNCTION_PROCESSOR = """
 from pathlib import Path
 
-def process(input_files, output_dir):
-    rows = [p.name for p in sorted(input_files)]
-    Path(output_dir, "out.txt").write_text("\\n".join(rows))
+def process(data_dir, output_dir):
+    tables = sorted(
+        str(p.relative_to(data_dir)) for p in Path(data_dir).rglob("*.csv")
+        if Path(output_dir) not in p.parents
+    )
+    Path(output_dir, "seen.txt").write_text("\\n".join(tables))
+    for name in ("train.csv", "test.csv"):
+        Path(output_dir, name).write_text("a\\n1\\n")
 """
 
-DUCK_CLASS_PROCESSOR = """
+FUNCTION_AND_HELPER_CLASS = """
 from pathlib import Path
 
-class Processor:
-    def process(self, input_files, output_dir):
+class Splitter:  # a helper that happens to have process(); must be ignored
+    def process(self, data_dir, output_dir):
         Path(output_dir, "out.txt").write_text("class")
 
-def process(input_files, output_dir):
+def process(data_dir, output_dir):
     Path(output_dir, "out.txt").write_text("function")
 """
 
@@ -33,8 +39,8 @@ SUBCLASS_PROCESSOR = """
 from pathlib import Path
 from dcat_ap_hub import DataProcessor
 
-class Legacy(DataProcessor):
-    def process(self, input_files, output_dir):
+class Splits(DataProcessor):
+    def process(self, data_dir, output_dir):
         Path(output_dir, "out.txt").write_text("subclass")
 """
 
@@ -48,24 +54,20 @@ def _run(tmp_path: Path, source: str) -> str:
     script.write_text(source)
     out = tmp_path / "out"
     out.mkdir()
-    apply_processor_logic(script, [tmp_path / "b.csv", tmp_path / "a.csv"], out)
+    apply_processor_logic(script, tmp_path, out)
     return (out / "out.txt").read_text()
 
 
-def test_module_level_function_needs_no_dcat_ap_hub_import(tmp_path):
-    assert _run(tmp_path, FUNCTION_PROCESSOR) == "a.csv\nb.csv"
+def test_module_level_function_wins_over_helper_classes(tmp_path):
+    assert _run(tmp_path, FUNCTION_AND_HELPER_CLASS) == "function"
 
 
-def test_class_with_process_method_wins_over_function(tmp_path):
-    assert _run(tmp_path, DUCK_CLASS_PROCESSOR) == "class"
-
-
-def test_legacy_data_processor_subclass_still_works(tmp_path):
+def test_data_processor_subclass_works(tmp_path):
     assert _run(tmp_path, SUBCLASS_PROCESSOR) == "subclass"
 
 
 def test_script_without_processor_fails_clearly(tmp_path):
-    with pytest.raises(RuntimeError, match="process\\(input_files, output_dir\\)"):
+    with pytest.raises(RuntimeError, match="process\\(data_dir, output_dir\\)"):
         _run(tmp_path, IMPORTED_CLASS_ONLY)
 
 
@@ -92,13 +94,17 @@ def _metadata(processor_entry: dict, *, dataset_extra: dict | None = None) -> di
 PROCESSOR_ENTRY = {
     "@id": "https://example.org/dataset/1#processor",
     "@type": "rdfs:Resource",
-    "dct:title": "parser.py",
-    "dct:conformsTo": PROCESSOR_PROFILE_URI,
-    "dcat:downloadURL": "parser.py",
+    "dct:title": "processor.py",
+    "dct:conformsTo": {"@id": PROCESSOR_PROFILE_URI},
+    "dcat:downloadURL": "processor.py",
 }
 
 
-def test_parses_other_prefixes_and_full_iris():
+def test_processor_profile_is_hammerhai_vocabulary():
+    assert PROCESSOR_PROFILE_URI == "https://data.hammerhai.eu/vocab/Processor"
+
+
+def test_parses_other_prefixes_and_compact_profile():
     document = {
         "@context": {
             "dcterms": "http://purl.org/dc/terms/",
@@ -119,8 +125,9 @@ def test_parses_other_prefixes_and_full_iris():
             {
                 "@id": "https://example.org/dataset/1#processor",
                 "@type": "http://www.w3.org/2000/01/rdf-schema#Resource",
-                "dcterms:title": "parser.py",
-                "d:accessURL": "https://example.org/parser.py",
+                "dcterms:title": "processor.py",
+                "dcterms:conformsTo": "hammerhai:Processor",
+                "d:accessURL": "https://example.org/processor.py",
             },
         ],
     }
@@ -130,7 +137,21 @@ def test_parses_other_prefixes_and_full_iris():
     [resource] = meta.related_resources
     assert resource.role == "processor"
     assert resource.linked
-    assert resource.download_url == "https://example.org/parser.py"
+    assert resource.download_url == "https://example.org/processor.py"
+
+
+def test_resource_without_processor_profile_is_not_a_processor():
+    entry = {key: value for key, value in PROCESSOR_ENTRY.items() if key != "dct:conformsTo"}
+    [resource] = _parse_json_content(_metadata(entry), "test").related_resources
+    assert resource.role == "other"
+
+
+def test_relative_urls_resolve_against_a_remote_record_only():
+    remote = _parse_json_content(_metadata(PROCESSOR_ENTRY), "https://host.example/run/dcat-metadata.jsonld")
+    local = _parse_json_content(_metadata(PROCESSOR_ENTRY), "/data/run/dcat-metadata.jsonld")
+    assert remote.related_resources[0].download_url == "https://host.example/run/processor.py"
+    assert local.related_resources[0].download_url == "processor.py"
+    assert remote.related_resources[0].get_filename() == "processor.py"
 
 
 def test_linked_processor_is_preferred(tmp_path):
@@ -142,24 +163,73 @@ def test_linked_processor_is_preferred(tmp_path):
     document["@graph"].insert(1, unlinked)
     (tmp_path / "dcat-metadata.jsonld").write_text(json.dumps(document))
     (tmp_path / "table.csv").write_text("a\n1\n")
-    (tmp_path / "parser.py").write_text(FUNCTION_PROCESSOR)
+    (tmp_path / "processor.py").write_text(FUNCTION_PROCESSOR)
     (tmp_path / "other.py").write_text("raise SystemExit('wrong processor')")
 
     Dataset.from_directory(tmp_path).process(verbose=False)
 
-    assert (tmp_path / "processed" / "out.txt").read_text() == "other.py\ntable.csv"
+    assert (tmp_path / "processed" / "seen.txt").read_text() == "table.csv"
 
 
-def test_local_folder_with_plain_processor_name_processes(tmp_path):
+def test_processor_gets_the_folder_including_extracted_subfolders(tmp_path):
     (tmp_path / "dcat-metadata.jsonld").write_text(json.dumps(_metadata(PROCESSOR_ENTRY)))
-    (tmp_path / "unrelated.jsonld").write_text("{}")
-    (tmp_path / "table.csv").write_text("a\n1\n")
-    (tmp_path / "parser.py").write_text(FUNCTION_PROCESSOR)
+    (tmp_path / "archive").mkdir()
+    (tmp_path / "archive" / "part.csv").write_text("a\n1\n")
+    (tmp_path / "processor.py").write_text(FUNCTION_PROCESSOR)
 
-    Dataset.from_directory(tmp_path).process(verbose=False)
+    files = Dataset.from_directory(tmp_path).process(verbose=False)
 
-    # Processor and metadata sidecar are excluded from the inputs.
-    assert (tmp_path / "processed" / "out.txt").read_text() == "table.csv\nunrelated.jsonld"
+    assert (tmp_path / "processed" / "seen.txt").read_text() == "archive/part.csv"
+    assert {name for name in SPLIT_FILES} <= {f.path.name for f in files}
+
+
+def test_processor_must_write_the_split_files(tmp_path):
+    (tmp_path / "dcat-metadata.jsonld").write_text(json.dumps(_metadata(PROCESSOR_ENTRY)))
+    (tmp_path / "processor.py").write_text(
+        "from pathlib import Path\n"
+        "def process(data_dir, output_dir):\n"
+        "    Path(output_dir, 'X_train.npy').write_bytes(b'')\n"
+    )
+
+    with pytest.raises(RuntimeError, match="did not write train.csv, test.csv"):
+        Dataset.from_directory(tmp_path).process(verbose=False)
+    # A partial output must not count as processed on the next call.
+    with pytest.raises(RuntimeError, match="did not write"):
+        Dataset.from_directory(tmp_path).process(verbose=False)
+
+
+def test_add_processor_works_with_any_prefixes_and_is_idempotent(tmp_path):
+    raw = {
+        "@context": {"dcterms": "http://purl.org/dc/terms/", "d": "http://www.w3.org/ns/dcat#"},
+        "@graph": [
+            {
+                "@id": "https://example.org/dataset/1",
+                "@type": "http://www.w3.org/ns/dcat#Dataset",
+                "dcterms:title": "Example",
+                "dcterms:relation": {"@id": "https://example.org/other"},
+            }
+        ],
+    }
+
+    document = add_processor(add_processor(raw))
+
+    datasets = [n for n in document["@graph"] if n.get("@type") == "http://www.w3.org/ns/dcat#Dataset"]
+    assert len(datasets) == 1  # found despite full IRIs; no second dataset added
+    assert datasets[0]["dcterms:relation"] == [
+        {"@id": "https://example.org/other"},
+        {"@id": "https://example.org/dataset/1#processor"},
+    ]
+    assert sum(1 for n in document["@graph"] if n.get("@id", "").endswith("#processor")) == 1
+    meta = _parse_json_content(document, "test")
+    [resource] = meta.related_resources
+    assert (resource.role, resource.linked, resource.download_url) == ("processor", True, "processor.py")
+
+
+def test_add_processor_creates_a_dataset_for_empty_records():
+    document = add_processor({}, dataset_id="https://example.org/d", title="Fallback")
+    meta = _parse_json_content(document, "test")
+    assert meta.title == "Fallback"
+    assert meta.related_resources[0].linked
 
 
 def test_list_valued_urls_are_not_dropped():

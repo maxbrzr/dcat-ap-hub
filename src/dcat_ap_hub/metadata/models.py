@@ -57,13 +57,20 @@ class RelatedResource:
     description: str
     format: str
     download_url: str
-    role: Literal["processor", "notebook"] = "processor"
+    role: Literal["processor", "notebook", "other"] = "other"
     # True when the dataset entry references this resource (dct:relation etc.).
     linked: bool = False
 
     def get_filename(self) -> str:
-        """Create a safe filename with deterministic URL-based disambiguation."""
+        """
+        Create a safe filename with deterministic URL-based disambiguation.
+
+        Processors keep their plain title (``processor.py``), so a dataset
+        folder looks the same whether it was downloaded or assembled locally.
+        """
         base = _sanitize_filename(self.title, "untitled_resource")
+        if self.role == "processor":
+            return base
         filename = _append_hash_before_extension(base, _short_hash(self.download_url))
         return filename
 

@@ -34,12 +34,18 @@ This enables the definition of multi-dataset benchmarks as DCAT-AP catalogues, s
 
 ### Processor Resources
 
-A processor is an `rdfs:Resource` entry. Mark it with
-`dct:conformsTo: "http://example.org/profiles/Processor"` and link it from the
-dataset with `dct:relation` so it is preferred when several resources exist:
+A processor is an `rdfs:Resource` marked with
+`dct:conformsTo: https://data.hammerhai.eu/vocab/Processor` (`hammerhai:Processor`)
+and linked from the dataset with `dct:relation`, so it is preferred when several
+resources exist. Only resources with this profile are run as processors.
 
 ```json
 {
+  "@context": {
+    "dcat": "http://www.w3.org/ns/dcat#",
+    "dct": "http://purl.org/dc/terms/",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#"
+  },
   "@graph": [
     {
       "@id": "https://example.org/dataset/1",
@@ -50,36 +56,40 @@ dataset with `dct:relation` so it is preferred when several resources exist:
     {
       "@id": "https://example.org/dataset/1#processor",
       "@type": "rdfs:Resource",
-      "dct:title": "parser.py",
-      "dct:conformsTo": "http://example.org/profiles/Processor",
-      "dcat:downloadURL": "https://example.org/files/parser.py"
+      "dct:title": "processor.py",
+      "dct:conformsTo": {"@id": "https://data.hammerhai.eu/vocab/Processor"},
+      "dcat:downloadURL": "processor.py"
     }
   ]
 }
 ```
 
-The processor script does not need to import dcat-ap-hub. It must provide one of
-the following, checked in this order:
+A relative `dcat:downloadURL` names a file next to the record: in a local folder,
+or, for a record fetched by URL, relative to that URL. A dataset folder can
+therefore be published as is. `add_processor(record)` adds such an entry to any
+record, whatever prefixes it uses.
 
-1. a class inheriting `dcat_ap_hub.DataProcessor`;
-2. a class defined in the script with a `process(input_files, output_dir)` method;
-3. a module-level function:
+The processor script does not need to import dcat-ap-hub. It must define a
+module-level function (or, alternatively, a `dcat_ap_hub.DataProcessor`
+subclass):
 
 ```python
-def process(input_files: list[Path], output_dir: Path) -> None:
-    ...  # read raw files, write e.g. train.csv and test.csv to output_dir
+def process(data_dir: Path, output_dir: Path) -> None:
+    ...  # read the raw files in data_dir, write train.csv and test.csv
 ```
 
-`input_files` are the top-level files of the dataset folder, excluding the
-processor script, an attached notebook, and `dcat-metadata.jsonld`.
+`data_dir` is the dataset folder. Besides the raw files, possibly in sub-folders
+extracted from archives, it holds the processor, `dcat-metadata.jsonld`, and
+`output_dir` (`data_dir/processed`); a processor reads only the files it needs.
+It must write `train.csv` and `test.csv`; `process()` fails otherwise, and only a
+complete split counts as already processed.
 
-To process a local folder, place the raw files, the processor script, and a
-`dcat-metadata.jsonld` describing them in one directory; the processor file may
-be named after the resource title (`parser.py`):
+To process a local folder, place the raw files, `processor.py`, and a
+`dcat-metadata.jsonld` declaring it in one directory:
 
 ```python
 ds = Dataset.from_directory("path/to/folder")
-ds.process()  # writes path/to/folder/processed/
+ds.process()  # writes path/to/folder/processed/train.csv and test.csv
 ```
 
 ### How To Install
@@ -132,14 +142,21 @@ model = ds.load_model(model_dir="./models")
 
 ### Example of Processing a Dataset if Available
 
+Any record with a `hammerhai:Processor` works, for example an AI-ready dataset
+produced by the agentic data engineer:
+
 ```python
 from dcat_ap_hub import Dataset
 
-url = "https://ki-daten.hlrs.de/de/dataset/https-piveau-io-set-data-predictive-maintenance-ttl"
+url = "https://example.org/ai-ready/dcat-metadata.jsonld"  # an AI-ready record
 
 ds = Dataset.from_url(url)
 files = ds.download(data_dir="./data")
-processed = ds.process(processed_dir="./processed")
+processed = ds.process()  # ./data/<title>/processed/train.csv and test.csv
+
+# A run folder of the agentic data engineer works before publishing:
+local = Dataset.from_directory("output/<example>/runs/<run>/data")
+local.process()
 ```
 
 ### Funding

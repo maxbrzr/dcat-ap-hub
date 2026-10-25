@@ -15,9 +15,11 @@ from dcat_ap_hub.metadata.transfer import dataset_dir_name
 PROCESSOR = """
 from pathlib import Path
 
-def process(input_files, output_dir):
-    rows = [p.name.split("_")[0] for p in sorted(input_files)]
+def process(data_dir, output_dir):
+    rows = [p.name.split("_")[0] for p in sorted(Path(data_dir).glob("*.csv"))]
     Path(output_dir, "out.txt").write_text("\\n".join(rows))
+    for name in ("train.csv", "test.csv"):
+        Path(output_dir, name).write_text("x\\n1\\n")
 """
 
 
@@ -92,7 +94,7 @@ def test_processor_without_suffix_served_as_text_plain_processes(server, tmp_pat
     assert any(f.path.suffix == ".txt" for f in files)
     # ...and processing still finds and runs it.
     ds.process(verbose=False)
-    assert (ds.processed_path / "out.txt").read_text() == "part\npart"  # processor not among inputs
+    assert (ds.processed_path / "out.txt").read_text() == "part\npart"
 
 
 def test_list_valued_download_url_downloads_every_file(server, tmp_path):

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Union
 from urllib import request
+from urllib.parse import urljoin, urlparse
 
 from dcat_ap_hub.metadata.constants import (
     HF_FORMAT,
@@ -13,7 +14,7 @@ from dcat_ap_hub.metadata.constants import (
     MODEL_TYPE,
     ONNX_FORMAT,
     ONNX_METADATA_PROFILE_URI,
-    PROCESSOR_PROFILE_URIS,
+    PROCESSOR_PROFILE_URI,
     SKLEARN_METADATA_PROFILE_URI,
 )
 from dcat_ap_hub.metadata.models import DatasetMetadata, Distribution, RelatedResource
@@ -91,6 +92,22 @@ def _compact(iri: str) -> str:
         if iri.startswith(namespace):
             return f"{prefix}:{iri[len(namespace):]}"
     return iri
+
+
+def _resolve(url: str, source_name: str) -> str:
+    """
+    Resolve a relative URL against the record it came from.
+
+    A record fetched from ``https://host/run/dcat-metadata.jsonld`` that names
+    ``processor.py`` points to ``https://host/run/processor.py``, so a dataset
+    folder can be published as is. Records read from local files keep relative
+    names; they refer to files in the same folder.
+    """
+    if not url or not source_name.startswith(("http://", "https://")):
+        return url
+    if urlparse(url).scheme:
+        return url
+    return urljoin(source_name, url)
 
 
 def _normalize_term(term: str, prefixes: Dict[str, str]) -> str:
@@ -183,7 +200,11 @@ def _parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
     for entry in entries:
         types = _extract_list(entry.get("@type", []))
 
-        conforms_to = _extract_list(entry.get("dct:conformsTo", []))
+        # Profiles may be written compactly ("hammerhai:Processor").
+        conforms_to = [
+            _expand(value, CANONICAL_PREFIXES)
+            for value in _extract_list(entry.get("dct:conformsTo", []))
+        ]
         format = _extract_value(entry.get("dct:format", ""))
 
         if "dcat:Distribution" in types:
@@ -199,7 +220,9 @@ def _parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
 
             # DCAT-AP allows several download URLs; each one is a separate file.
             download_urls = [
-                url for url in _extract_list(entry.get("dcat:downloadURL")) if url
+                _resolve(url, source_name)
+                for url in _extract_list(entry.get("dcat:downloadURL"))
+                if url
             ]
             for download_url in download_urls or [""]:
                 distros.append(
@@ -209,28 +232,34 @@ def _parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
                             entry.get("dct:description", "")
                         ),
                         format=format,
-                        access_url=_extract_value(entry.get("dcat:accessURL", "")),
+                        access_url=_resolve(
+                            _extract_value(entry.get("dcat:accessURL", "")), source_name
+                        ),
                         download_url=download_url,
                         role=dist_role,
                     )
                 )
 
         elif "rdfs:Resource" in types:
-            rel_role = "processor"
             title = _extract_lang_value(entry.get("dct:title", "")).lower()
 
-            if PROCESSOR_PROFILE_URIS.intersection(conforms_to):
+            if PROCESSOR_PROFILE_URI in conforms_to:
                 rel_role = "processor"
             elif "ipynb" in format or "notebook" in title:
                 rel_role = "notebook"
+            else:
+                rel_role = "other"
 
             related_resources.append(
                 RelatedResource(
                     title=_extract_lang_value(entry.get("dct:title", "")),
                     description=_extract_lang_value(entry.get("dct:description", "")),
                     format=format,
-                    download_url=_extract_value(entry.get("dcat:downloadURL", ""))
-                    or _extract_value(entry.get("dcat:accessURL", "")),
+                    download_url=_resolve(
+                        _extract_value(entry.get("dcat:downloadURL", ""))
+                        or _extract_value(entry.get("dcat:accessURL", "")),
+                        source_name,
+                    ),
                     role=rel_role,
                     linked=entry.get("@id") in linked_ids,
                 )

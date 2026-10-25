@@ -3,12 +3,16 @@
 # Type URI used to identify model entries in the source metadata.
 MODEL_TYPE = "http://www.w3.org/ns/mls#Model"
 
-# Profile URI used to identify processor resources.
-PROCESSOR_PROFILE_URI = "http://example.org/profiles/Processor"
-# All profile URIs accepted as processor markers. Add a stable, resolvable URI
-# here (and switch PROCESSOR_PROFILE_URI to it) once one is registered; keep the
-# legacy value so existing metadata stays valid.
-PROCESSOR_PROFILE_URIS = frozenset({PROCESSOR_PROFILE_URI})
+# HammerHAI vocabulary, shared with the harvested catalogs on data.hammerhai.eu.
+HAMMERHAI_NAMESPACE = "https://data.hammerhai.eu/vocab/"
+
+# Profile of a processor resource: an ``rdfs:Resource`` linked from the dataset
+# with ``dct:relation`` whose script turns the raw files into the AI-ready split.
+PROCESSOR_PROFILE_URI = HAMMERHAI_NAMESPACE + "Processor"
+# Conventional file name of a processor script.
+PROCESSOR_FILENAME = "processor.py"
+# Files every processor must write to its output directory.
+SPLIT_FILES = ("train.csv", "test.csv")
 
 # Namespaces used to normalize JSON-LD terms to the prefixes this parser reads.
 # Keys are the canonical prefixes; values are their namespace IRIs.
@@ -18,6 +22,7 @@ CANONICAL_PREFIXES = {
     "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
     "foaf": "http://xmlns.com/foaf/0.1/",
     "mls": "http://www.w3.org/ns/mls#",
+    "hammerhai": HAMMERHAI_NAMESPACE,
 }
 
 # Model metadata profiles for backend role inference.
