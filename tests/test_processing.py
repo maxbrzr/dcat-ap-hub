@@ -160,3 +160,49 @@ def test_local_folder_with_plain_processor_name_processes(tmp_path):
 
     # Processor and metadata sidecar are excluded from the inputs.
     assert (tmp_path / "processed" / "out.txt").read_text() == "table.csv\nunrelated.jsonld"
+
+
+def test_list_valued_urls_are_not_dropped():
+    document = _metadata(
+        {**PROCESSOR_ENTRY, "dcat:downloadURL": [{"@id": "https://example.org/p.py"}]}
+    )
+    document["@graph"][1]["dcat:downloadURL"] = [
+        {"@id": "https://example.org/a.csv"},
+        "https://example.org/b.csv",
+    ]
+    meta = _parse_json_content(document, "test")
+    assert [d.download_url for d in meta.distributions] == [
+        "https://example.org/a.csv",
+        "https://example.org/b.csv",
+    ]
+    assert meta.related_resources[0].download_url == "https://example.org/p.py"
+
+
+def test_distribution_without_download_url_keeps_access_url():
+    document = _metadata(PROCESSOR_ENTRY)
+    del document["@graph"][1]["dcat:downloadURL"]
+    document["@graph"][1]["dcat:accessURL"] = "https://example.org/landing"
+    [distribution] = _parse_json_content(document, "test").distributions
+    assert distribution.best_url == "https://example.org/landing"
+
+
+def test_first_of_several_datasets_is_used():
+    document = _metadata(PROCESSOR_ENTRY)
+    document["@graph"].append(
+        {"@id": "https://example.org/dataset/2", "@type": "dcat:Dataset", "dct:title": "Second"}
+    )
+    assert _parse_json_content(document, "test").title == "Example"
+
+
+def test_csv_with_late_non_ascii_bytes_and_parquet_load(tmp_path):
+    import pandas as pd
+
+    from dcat_ap_hub.files.files import LazyFile
+
+    csv = tmp_path / "table.csv"
+    csv.write_text("a,b\n" + "1,x\n" * 50_000 + "2,café\n", encoding="utf-8")
+    parquet = tmp_path / "table.parquet"
+    pd.DataFrame({"a": [1, 2]}).to_parquet(parquet)
+
+    assert LazyFile(csv).data.iloc[-1]["b"] == "café"
+    assert LazyFile(parquet).data["a"].tolist() == [1, 2]

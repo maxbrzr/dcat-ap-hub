@@ -20,8 +20,10 @@ from dcat_ap_hub.metadata.models import DatasetMetadata, Distribution, RelatedRe
 from dcat_ap_hub.utils.logging import logger
 
 
-def _extract_value(field: Union[str, dict, None]) -> str:
-    """Normalize a JSON-LD field to a string."""
+def _extract_value(field: Union[str, dict, list, None]) -> str:
+    """Normalize a JSON-LD field to a string (the first value of a list)."""
+    if isinstance(field, list):
+        return next((value for value in map(_extract_value, field) if value), "")
     if isinstance(field, dict):
         return field.get("@id") or field.get("@value") or ""
     return field if isinstance(field, str) else ""
@@ -157,6 +159,11 @@ def _parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
         types = _extract_list(entry.get("@type", []))
 
         if "dcat:Dataset" in types:
+            if dataset_meta:
+                logger.warning(
+                    f"Several dcat:Dataset entries in {source_name}; using the first."
+                )
+                continue
             is_model = MODEL_TYPE in types
             dataset_meta = DatasetMetadata(
                 title=_extract_lang_value(entry.get("dct:title", "")),
@@ -190,16 +197,23 @@ def _parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
             elif SKLEARN_METADATA_PROFILE_URI in conforms_to:
                 dist_role = "sklearn_model"
 
-            distros.append(
-                Distribution(
-                    title=_extract_lang_value(entry.get("dct:title", "")),
-                    description=_extract_lang_value(entry.get("dct:description", "")),
-                    format=format,
-                    access_url=_extract_value(entry.get("dcat:accessURL", "")),
-                    download_url=_extract_value(entry.get("dcat:downloadURL", "")),
-                    role=dist_role,
+            # DCAT-AP allows several download URLs; each one is a separate file.
+            download_urls = [
+                url for url in _extract_list(entry.get("dcat:downloadURL")) if url
+            ]
+            for download_url in download_urls or [""]:
+                distros.append(
+                    Distribution(
+                        title=_extract_lang_value(entry.get("dct:title", "")),
+                        description=_extract_lang_value(
+                            entry.get("dct:description", "")
+                        ),
+                        format=format,
+                        access_url=_extract_value(entry.get("dcat:accessURL", "")),
+                        download_url=download_url,
+                        role=dist_role,
+                    )
                 )
-            )
 
         elif "rdfs:Resource" in types:
             rel_role = "processor"

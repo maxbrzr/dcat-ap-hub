@@ -2,6 +2,7 @@
 
 import mimetypes
 import os
+import re
 import tarfile
 import zipfile
 from pathlib import Path
@@ -11,6 +12,22 @@ from tqdm import tqdm
 
 from dcat_ap_hub.metadata.models import DatasetMetadata
 from dcat_ap_hub.utils.logging import logger
+
+
+# A real file extension, unlike the tail of "Data v1.2 archive_<hash>".
+_EXTENSION = re.compile(r"\.[A-Za-z0-9]{1,10}$")
+
+
+def dataset_dir_name(title: str) -> str:
+    """
+    Return a dataset title as one folder name that is valid on every OS.
+
+    Path separators and characters Windows rejects (``<>:"/\\|?*``) become
+    spaces; whitespace is collapsed and trailing dots or spaces are removed.
+    """
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", title)
+    name = " ".join(name.split()).strip(" .")
+    return name or "untitled_dataset"
 
 
 def _extract_archive(filepath: Path, target_dir: Path) -> None:
@@ -61,22 +78,24 @@ def _download_file(url: str, dest_path: Path, verbose: bool = False) -> Path:
         with requests.get(url, stream=True) as r:
             r.raise_for_status()
 
-            # Adjust extension using MIME type when safe.
-            content_type = r.headers.get("Content-Type", "")
-            ext = mimetypes.guess_extension(content_type.split(";")[0])
+            # Servers often send generic types (``application/octet-stream`` for
+            # Parquet), so the MIME type only fills in a missing extension. HTML
+            # is the exception: it marks a landing or login page, not the data.
+            mime = r.headers.get("Content-Type", "").split(";")[0].split(",")[0]
+            mime = mime.strip().lower()
+            ext = mimetypes.guess_extension(mime)
+            has_extension = bool(_EXTENSION.search(dest_path.name))
+            is_html_page = mime == "text/html" and dest_path.suffix not in {
+                ".html",
+                ".htm",
+            }
 
-            # Keep common source/code extensions stable even if server MIME is generic.
-            protected_exts = {".py", ".ipynb", ".sh", ".json", ".md", ".yaml", ".yml"}
-
-            should_update = (
-                ext
-                and dest_path.suffix != ext
-                and dest_path.suffix not in protected_exts
-            )
-
-            if should_update:
-                assert ext is not None  # For type checker
-                dest_path = dest_path.with_suffix(ext)
+            if ext and (not has_extension or is_html_page):
+                dest_path = (
+                    dest_path.with_suffix(ext)
+                    if has_extension
+                    else dest_path.with_name(dest_path.name + ext)
+                )
 
             total = int(r.headers.get("content-length", 0))
 
@@ -112,7 +131,16 @@ def download_dataset_files(
     Returns:
         Path to the dataset directory containing downloaded artifacts.
     """
-    dataset_dir = base_dir / metadata.title
+    dataset_dir = base_dir / dataset_dir_name(metadata.title)
+    # Reuse a folder created by older versions from the unsanitized title.
+    legacy_dir = base_dir / metadata.title
+    if (
+        legacy_dir != dataset_dir
+        and legacy_dir.parent == base_dir
+        and legacy_dir.is_dir()
+        and not dataset_dir.exists()
+    ):
+        dataset_dir = legacy_dir
 
     if dataset_dir.exists() and not force:
         if verbose:

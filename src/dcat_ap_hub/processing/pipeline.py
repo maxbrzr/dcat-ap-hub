@@ -58,10 +58,21 @@ def _resolve_processor_paths(
 
 
 def _find_local_file(local_data_path: Path, resource: RelatedResource) -> Optional[Path]:
-    for name in resource.candidate_filenames():
+    names = resource.candidate_filenames()
+    for name in names:
         for candidate in (local_data_path / name, local_data_path / f"{name}.py"):
             if candidate.is_file():
                 return candidate
+    # The downloader adds an extension from the server MIME type when the name
+    # has none, e.g. ``.txt`` for a processor served as ``text/plain``.
+    for name in names:
+        matches = sorted(
+            path
+            for path in local_data_path.iterdir()
+            if path.is_file() and path.stem == name
+        )
+        if matches:
+            return matches[0]
     return None
 
 

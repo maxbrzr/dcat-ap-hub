@@ -53,8 +53,15 @@ class CsvLoader(BaseLoader):
         return result["encoding"]
 
     def load(self, path: Path) -> Any:
-        encoding = self._detect_encoding(path)
-        return pd.read_csv(path, encoding=encoding, sep=None, engine="python")
+        # The sniffed sample may look ASCII while later rows are UTF-8, so try
+        # UTF-8 (a superset of ASCII) first.
+        try:
+            return pd.read_csv(path, encoding="utf-8", sep=None, engine="python")
+        except UnicodeDecodeError:
+            encoding = self._detect_encoding(path)
+            if not encoding or encoding.lower() == "ascii":
+                encoding = "latin-1"
+            return pd.read_csv(path, encoding=encoding, sep=None, engine="python")
 
 
 class ExcelLoader(BaseLoader):

@@ -1,5 +1,6 @@
 """Dynamic processor loading and execution utilities."""
 
+import importlib.machinery
 import importlib.util
 import inspect
 import sys
@@ -63,7 +64,11 @@ def apply_processor_logic(
         # Use unique module names to prevent collisions between processor runs.
         unique_mod_name = f"dcat_processor_{parser_path.stem}_{uuid.uuid4().hex[:8]}"
 
-        spec = importlib.util.spec_from_file_location(unique_mod_name, parser_path)
+        # An explicit loader also accepts scripts stored without a ``.py`` suffix.
+        loader = importlib.machinery.SourceFileLoader(unique_mod_name, str(parser_path))
+        spec = importlib.util.spec_from_file_location(
+            unique_mod_name, parser_path, loader=loader
+        )
         if not spec or not spec.loader:
             raise ImportError(f"Could not load spec from {parser_path}")
 
