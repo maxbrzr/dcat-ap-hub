@@ -11,7 +11,7 @@ Currently, metadata parsing supports **JSON-LD** from direct URLs, content negot
    - local metadata files (`Dataset.from_file(...)`)
    - local directories that contain metadata files (`Dataset.from_directory(...)`)
 
-2. Download files referenced by distributions and related resources (`dcat:downloadURL`) into a local dataset directory.
+2. Download files referenced by distributions and related resources (`dcat:downloadURL`) into a local dataset directory. Next to the files, `dcat-ap-metadata.jsonld` keeps the record and `dcat-ap-sources.json` records, for every file, the URL it came from (archive members: the archive's URL) and its SHA-256, plus every download that failed or returned an HTML page instead of data (`read_sources_manifest(folder)`).
 
 3. Load files or models for use in code:
    - Load files as a lazy `FileCollection` with built-in loaders for common formats such as CSV, Excel, JSON, Parquet, images, PDF, text, HTML/XML, and NumPy arrays.
@@ -69,6 +69,12 @@ or, for a record fetched by URL, relative to that URL. A dataset folder can
 therefore be published as is. `add_processor(record)` adds such an entry to any
 record, whatever prefixes it uses.
 
+`ai_ready_record(raw)` turns a raw record into the record of its AI-ready
+version: same distributions (the processor's inputs), its own relative id
+`#dataset` (the record's URL once published), `prov:wasDerivedFrom` pointing to
+the raw dataset (`Dataset._meta.derived_from`), and the title suffix
+" (AI-ready)", so raw and AI-ready datasets do not share a download folder.
+
 The processor script does not need to import dcat-ap-hub. It must define a
 module-level function (or, alternatively, a `dcat_ap_hub.DataProcessor`
 subclass):
@@ -79,13 +85,13 @@ def process(data_dir: Path, output_dir: Path) -> None:
 ```
 
 `data_dir` is the dataset folder. Besides the raw files, possibly in sub-folders
-extracted from archives, it holds the processor, `dcat-metadata.jsonld`, and
+extracted from archives, it holds the processor, `dcat-ap-metadata.jsonld`, and
 `output_dir` (`data_dir/processed`); a processor reads only the files it needs.
 It must write `train.csv` and `test.csv`; `process()` fails otherwise, and only a
 complete split counts as already processed.
 
 To process a local folder, place the raw files, `processor.py`, and a
-`dcat-metadata.jsonld` declaring it in one directory:
+`dcat-ap-metadata.jsonld` declaring it in one directory:
 
 ```python
 ds = Dataset.from_directory("path/to/folder")
@@ -148,7 +154,7 @@ produced by the agentic data engineer:
 ```python
 from dcat_ap_hub import Dataset
 
-url = "https://example.org/ai-ready/dcat-metadata.jsonld"  # an AI-ready record
+url = "https://example.org/ai-ready/dcat-ap-metadata.jsonld"  # an AI-ready record
 
 ds = Dataset.from_url(url)
 files = ds.download(data_dir="./data")

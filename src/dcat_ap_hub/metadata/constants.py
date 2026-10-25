@@ -13,6 +13,10 @@ PROCESSOR_PROFILE_URI = HAMMERHAI_NAMESPACE + "Processor"
 PROCESSOR_FILENAME = "processor.py"
 # Files every processor must write to its output directory.
 SPLIT_FILES = ("train.csv", "test.csv")
+# Sidecars written by download() beside the data: the dataset's record, and
+# the URL and SHA-256 of every file.
+METADATA_FILENAME = "dcat-ap-metadata.jsonld"
+SOURCES_MANIFEST = "dcat-ap-sources.json"
 
 # Namespaces used to normalize JSON-LD terms to the prefixes this parser reads.
 # Keys are the canonical prefixes; values are their namespace IRIs.
@@ -23,6 +27,7 @@ CANONICAL_PREFIXES = {
     "foaf": "http://xmlns.com/foaf/0.1/",
     "mls": "http://www.w3.org/ns/mls#",
     "hammerhai": HAMMERHAI_NAMESPACE,
+    "prov": "http://www.w3.org/ns/prov#",
 }
 
 # Model metadata profiles for backend role inference.

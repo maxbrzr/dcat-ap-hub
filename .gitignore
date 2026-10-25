@@ -29,3 +29,5 @@ demo
 .uv-cache/
 .ruff_cache/
 .env
+
+experiments

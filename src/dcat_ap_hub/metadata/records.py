@@ -61,8 +61,9 @@ def add_processor(
     if dataset is None:
         dataset = {"@id": dataset_id, "@type": _DATASET_TYPE, "dct:title": title}
         graph.insert(0, dataset)
-    base_id = dataset.get("@id") or dataset_id or "_:dataset"
-    processor_id = f"{base_id}#processor"
+    base_id = dataset.get("@id") or dataset_id or "#dataset"
+    # A relative "#dataset" gets a sibling "#processor", not "#dataset#processor".
+    processor_id = "#processor" if base_id.startswith("#") else f"{base_id}#processor"
 
     graph = [
         node
@@ -100,6 +101,103 @@ def add_processor(
     document["@graph"] = graph
     document["@context"] = _with_prefixes(document.get("@context"))
     return document
+
+
+AI_READY_DATASET_ID = "#dataset"
+
+
+def ai_ready_record(
+    raw: Dict[str, Any],
+    *,
+    dataset_id: str = AI_READY_DATASET_ID,
+    raw_id: Optional[str] = None,
+    title_suffix: str = " (AI-ready)",
+) -> Dict[str, Any]:
+    """
+    Return a new record for the AI-ready version of the dataset in ``raw``.
+
+    The copy keeps the raw record's distributions, so ``download()`` still
+    fetches the raw files the processor needs, but it is a dataset of its own:
+
+    * it gets ``dataset_id``. The default ``#dataset`` is relative, so once the
+      record is published it names that record's own URL;
+    * ``prov:wasDerivedFrom`` points to the raw dataset (``raw_id`` when the
+      raw record has no ``@id``, e.g. the URL it was fetched from);
+    * its title gets ``title_suffix``, so the raw and AI-ready datasets do not
+      share a download folder.
+
+    References to the raw dataset elsewhere in the record follow the new id.
+    """
+    document = copy.deepcopy(raw)
+    graph = document.get("@graph")
+    if not isinstance(graph, list):
+        node = {key: value for key, value in document.items() if key != "@context"}
+        graph = [node] if node.get("@type") else []
+        document = {key: value for key, value in document.items() if key == "@context"}
+    prefixes = {**CANONICAL_PREFIXES, "dcterms": CANONICAL_PREFIXES["dct"]}
+    prefixes.update(_context_prefixes(document.get("@context")))
+
+    position = next(
+        (
+            index
+            for index, node in enumerate(graph)
+            if isinstance(node, dict)
+            and _DATASET_TYPE in _extract_list(_normalize_node(node, prefixes).get("@type"))
+        ),
+        None,
+    )
+    if position is None:
+        raise ValueError("The raw record has no dcat:Dataset to derive from.")
+    source_id = graph[position].get("@id") or raw_id
+    if graph[position].get("@id"):
+        graph = _rename_references(graph, graph[position]["@id"], dataset_id)
+    dataset = graph[position]
+    dataset["@id"] = dataset_id
+    if source_id:
+        dataset["prov:wasDerivedFrom"] = {"@id": source_id}
+
+    title_key = next(
+        (
+            key
+            for key in dataset
+            if not key.startswith("@")
+            and next(iter(_normalize_node({key: None}, prefixes))) == "dct:title"
+        ),
+        "dct:title",
+    )
+    dataset[title_key] = _suffixed(dataset.get(title_key, ""), title_suffix)
+
+    document["@graph"] = graph
+    context = _with_prefixes(document.get("@context"))
+    if isinstance(context, dict):
+        context.setdefault("prov", CANONICAL_PREFIXES["prov"])
+    else:
+        context.append({"prov": CANONICAL_PREFIXES["prov"]})
+    document["@context"] = context
+    return document
+
+
+def _rename_references(value: Any, old: str, new: str) -> Any:
+    """Replace every ``@id`` equal to ``old`` with ``new``."""
+    if isinstance(value, list):
+        return [_rename_references(item, old, new) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: (new if key == "@id" and item == old else _rename_references(item, old, new))
+            for key, item in value.items()
+        }
+    return value
+
+
+def _suffixed(title: Any, suffix: str) -> Any:
+    """Append ``suffix`` to a title literal in any of its JSON-LD forms."""
+    if isinstance(title, str):
+        return title + suffix
+    if isinstance(title, dict) and isinstance(title.get("@value"), str):
+        return {**title, "@value": title["@value"] + suffix}
+    if isinstance(title, list):
+        return [_suffixed(item, suffix) for item in title]
+    return title
 
 
 def _with_prefixes(context: Any) -> Any:

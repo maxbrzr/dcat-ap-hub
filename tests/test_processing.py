@@ -147,8 +147,8 @@ def test_resource_without_processor_profile_is_not_a_processor():
 
 
 def test_relative_urls_resolve_against_a_remote_record_only():
-    remote = _parse_json_content(_metadata(PROCESSOR_ENTRY), "https://host.example/run/dcat-metadata.jsonld")
-    local = _parse_json_content(_metadata(PROCESSOR_ENTRY), "/data/run/dcat-metadata.jsonld")
+    remote = _parse_json_content(_metadata(PROCESSOR_ENTRY), "https://host.example/run/dcat-ap-metadata.jsonld")
+    local = _parse_json_content(_metadata(PROCESSOR_ENTRY), "/data/run/dcat-ap-metadata.jsonld")
     assert remote.related_resources[0].download_url == "https://host.example/run/processor.py"
     assert local.related_resources[0].download_url == "processor.py"
     assert remote.related_resources[0].get_filename() == "processor.py"
@@ -161,7 +161,7 @@ def test_linked_processor_is_preferred(tmp_path):
         dataset_extra={"dct:relation": {"@id": PROCESSOR_ENTRY["@id"]}},
     )
     document["@graph"].insert(1, unlinked)
-    (tmp_path / "dcat-metadata.jsonld").write_text(json.dumps(document))
+    (tmp_path / "dcat-ap-metadata.jsonld").write_text(json.dumps(document))
     (tmp_path / "table.csv").write_text("a\n1\n")
     (tmp_path / "processor.py").write_text(FUNCTION_PROCESSOR)
     (tmp_path / "other.py").write_text("raise SystemExit('wrong processor')")
@@ -172,7 +172,7 @@ def test_linked_processor_is_preferred(tmp_path):
 
 
 def test_processor_gets_the_folder_including_extracted_subfolders(tmp_path):
-    (tmp_path / "dcat-metadata.jsonld").write_text(json.dumps(_metadata(PROCESSOR_ENTRY)))
+    (tmp_path / "dcat-ap-metadata.jsonld").write_text(json.dumps(_metadata(PROCESSOR_ENTRY)))
     (tmp_path / "archive").mkdir()
     (tmp_path / "archive" / "part.csv").write_text("a\n1\n")
     (tmp_path / "processor.py").write_text(FUNCTION_PROCESSOR)
@@ -184,7 +184,7 @@ def test_processor_gets_the_folder_including_extracted_subfolders(tmp_path):
 
 
 def test_processor_must_write_the_split_files(tmp_path):
-    (tmp_path / "dcat-metadata.jsonld").write_text(json.dumps(_metadata(PROCESSOR_ENTRY)))
+    (tmp_path / "dcat-ap-metadata.jsonld").write_text(json.dumps(_metadata(PROCESSOR_ENTRY)))
     (tmp_path / "processor.py").write_text(
         "from pathlib import Path\n"
         "def process(data_dir, output_dir):\n"
@@ -276,3 +276,48 @@ def test_csv_with_late_non_ascii_bytes_and_parquet_load(tmp_path):
 
     assert LazyFile(csv).data.iloc[-1]["b"] == "café"
     assert LazyFile(parquet).data["a"].tolist() == [1, 2]
+
+
+def test_ai_ready_record_is_its_own_dataset_derived_from_the_raw_one():
+    from dcat_ap_hub import ai_ready_record
+
+    raw = {
+        "@graph": [
+            {
+                "@id": "https://piveau.io/set/data/raw",
+                "@type": "dcat:Dataset",
+                "dct:title": {"@language": "en", "@value": "Pump data"},
+                "dcat:distribution": {"@id": "https://piveau.io/set/distribution/1"},
+            },
+            {
+                "@id": "https://piveau.io/set/distribution/1",
+                "@type": "dcat:Distribution",
+                "dct:title": "table.csv",
+                "dcat:downloadURL": {"@id": "https://portal.example/table.csv"},
+            },
+            {"@id": "https://catalog.example/record", "foaf:primaryTopic": {"@id": "https://piveau.io/set/data/raw"}},
+        ]
+    }
+
+    document = add_processor(ai_ready_record(raw))
+    meta = _parse_json_content(document, "https://host.example/run/dcat-ap-metadata.jsonld")
+
+    assert meta.title == "Pump data (AI-ready)"
+    assert meta.derived_from == ["https://piveau.io/set/data/raw"]
+    # The raw files are still the processor's inputs.
+    assert [d.download_url for d in meta.distributions] == ["https://portal.example/table.csv"]
+    [processor] = meta.related_resources
+    assert processor.linked and processor.download_url == "https://host.example/run/processor.py"
+    ids = [node.get("@id") for node in document["@graph"]]
+    assert "#dataset" in ids and "#processor" in ids
+    assert "https://piveau.io/set/data/raw" not in ids
+    # References to the raw dataset follow the new id; the raw record is untouched.
+    assert document["@graph"][2]["foaf:primaryTopic"] == {"@id": "#dataset"}
+    assert raw["@graph"][0]["@id"] == "https://piveau.io/set/data/raw"
+
+
+def test_ai_ready_record_needs_a_dataset():
+    from dcat_ap_hub import ai_ready_record
+
+    with pytest.raises(ValueError, match="no dcat:Dataset"):
+        ai_ready_record({})

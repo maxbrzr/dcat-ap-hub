@@ -16,6 +16,7 @@ from dcat_ap_hub.integrations.discovery import (
 )
 from dcat_ap_hub.integrations.integrations import load_model as load_with_integration
 from dcat_ap_hub.integrations.models import BackendName, LoadOptions, ModelSource
+from dcat_ap_hub.metadata.constants import METADATA_FILENAME
 from dcat_ap_hub.metadata.models import DatasetMetadata, Distribution
 from dcat_ap_hub.metadata.parsing import (
     build_metadata_request_headers,
@@ -107,7 +108,7 @@ class Dataset:
         # Restore full metadata first when available.
         meta = None
         # Prefer the conventional sidecar name, then any other JSON-LD file.
-        candidates = sorted(p.glob("*.jsonld"), key=lambda f: f.name != "dcat-metadata.jsonld")
+        candidates = sorted(p.glob("*.jsonld"), key=lambda f: f.name != METADATA_FILENAME)
         for candidate in candidates:
             try:
                 # We use the internal parser directly to get the object
@@ -183,14 +184,14 @@ class Dataset:
 
     def _save_metadata(self, directory: Path, verbose: bool = False) -> None:
         """
-        Save remote source metadata as ``dcat-metadata.jsonld`` for offline reuse.
+        Save remote source metadata as ``dcat-ap-metadata.jsonld`` for offline reuse.
 
         No-op for local-only metadata sources.
         """
         if not self._meta.source_url.startswith(("http://", "https://")):
             return
 
-        target_file = directory / "dcat-metadata.jsonld"
+        target_file = directory / METADATA_FILENAME
         if target_file.exists():
             return
 

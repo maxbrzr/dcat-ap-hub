@@ -101,3 +101,6 @@ class DatasetMetadata:
     related_resources: List[RelatedResource] = field(default_factory=list)
     is_model: bool = False
     source_url: str = ""
+    # Records this dataset derives from (prov:wasDerivedFrom), e.g. the raw
+    # dataset of an AI-ready one.
+    derived_from: List[str] = field(default_factory=list)

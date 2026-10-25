@@ -170,7 +170,8 @@ def test_generic_mime_type_keeps_extension_and_html_is_marked(server, tmp_path):
         data_dir=tmp_path / "data", verbose=False
     )
 
-    suffixes = sorted(f.path.suffix for f in files if f.path.name != "dcat-metadata.jsonld")
+    sidecars = {"dcat-ap-metadata.jsonld", "dcat-ap-sources.json"}
+    suffixes = sorted(f.path.suffix for f in files if f.path.name not in sidecars)
     assert suffixes == [".html", ".parquet"]
 
 
@@ -205,3 +206,50 @@ def test_access_url_fallback_warns(server, tmp_path, caplog):
     assert len(warnings) == 1
     assert "'Zenodo record access' has no dcat:downloadURL" in warnings[0]
     assert f"{base}/landing.html" in warnings[0]
+
+
+def test_sources_manifest_records_where_every_file_came_from(server, tmp_path):
+    import hashlib
+    import zipfile
+
+    from dcat_ap_hub.metadata.transfer import read_sources_manifest
+
+    root, base = server
+    (root / "table.csv").write_text("x\n1\n")
+    with zipfile.ZipFile(root / "bundle.zip", "w") as archive:
+        archive.writestr("inner/a.csv", "a\n1\n")
+        archive.writestr("b.csv", "b\n2\n")
+    (root / "login.html").write_text("<html>sign in</html>")
+    record = {
+        "@graph": [
+            {"@id": f"{base}/d", "@type": "dcat:Dataset", "dct:title": "Example"},
+            {"@type": "dcat:Distribution", "dct:title": "table.csv", "dcat:downloadURL": f"{base}/table.csv"},
+            {"@type": "dcat:Distribution", "dct:title": "Archive", "dcat:downloadURL": f"{base}/bundle.zip"},
+            {"@type": "dcat:Distribution", "dct:title": "gone.csv", "dcat:downloadURL": f"{base}/gone.csv"},
+            {"@type": "dcat:Distribution", "dct:title": "data.csv", "dcat:downloadURL": f"{base}/login.html"},
+        ]
+    }
+    (root / "record.jsonld").write_text(json.dumps(record))
+
+    files = Dataset.from_url(f"{base}/record.jsonld").download(data_dir=tmp_path / "data", verbose=False)
+    manifest = read_sources_manifest(files.root)
+
+    assert manifest["record"] == f"{base}/record.jsonld"
+    by_url = {source["url"]: source for source in manifest["sources"]}
+    assert by_url[f"{base}/bundle.zip"]["files"] == ["b.csv", "inner/a.csv"]
+    assert by_url[f"{base}/bundle.zip"]["archive"].endswith(".zip")
+    assert by_url[f"{base}/gone.csv"]["status"] == "failed"
+    assert "404" in by_url[f"{base}/gone.csv"]["error"]
+    assert by_url[f"{base}/login.html"]["status"] == "html_page"
+    [table] = by_url[f"{base}/table.csv"]["files"]
+    entry = manifest["files"][table]
+    assert manifest["sources"][entry["source"]]["url"] == f"{base}/table.csv"
+    assert entry["sha256"] == hashlib.sha256((files.root / table).read_bytes()).hexdigest()
+    # The manifest does not list itself or the saved record.
+    assert "dcat-ap-sources.json" not in manifest["files"]
+
+
+def test_folder_not_downloaded_by_the_hub_has_no_manifest(tmp_path):
+    from dcat_ap_hub.metadata.transfer import read_sources_manifest
+
+    assert read_sources_manifest(tmp_path) is None

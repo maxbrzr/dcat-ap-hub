@@ -98,7 +98,7 @@ def _resolve(url: str, source_name: str) -> str:
     """
     Resolve a relative URL against the record it came from.
 
-    A record fetched from ``https://host/run/dcat-metadata.jsonld`` that names
+    A record fetched from ``https://host/run/dcat-ap-metadata.jsonld`` that names
     ``processor.py`` points to ``https://host/run/processor.py``, so a dataset
     folder can be published as is. Records read from local files keep relative
     names; they refer to files in the same folder.
@@ -188,6 +188,11 @@ def _parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
                 is_model=is_model,
                 source_url=source_name,
             )
+            dataset_meta.derived_from = [
+                _resolve(iri, source_name)
+                for iri in _extract_list(entry.get("prov:wasDerivedFrom", []))
+                if iri
+            ]
             for key in _RELATION_KEYS:
                 linked_ids.update(_extract_list(entry.get(key, [])))
 

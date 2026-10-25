@@ -1,15 +1,20 @@
 """Dataset artifact download and archive extraction utilities."""
 
+import hashlib
+import json
 import mimetypes
 import os
 import re
 import tarfile
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 import requests
 from tqdm import tqdm
 
+from dcat_ap_hub.metadata.constants import SOURCES_MANIFEST
 from dcat_ap_hub.metadata.models import DatasetMetadata
 from dcat_ap_hub.utils.logging import logger
 
@@ -128,6 +133,10 @@ def download_dataset_files(
     """
     Download all distributions and related resources into a dataset directory.
 
+    Also writes ``SOURCES_MANIFEST`` there, recording for every file the URL it
+    came from (archive members the archive's URL), its SHA-256, and every
+    download that failed or returned an HTML page instead of data.
+
     Returns:
         Path to the dataset directory containing downloaded artifacts.
     """
@@ -148,6 +157,7 @@ def download_dataset_files(
         return dataset_dir
 
     dataset_dir.mkdir(parents=True, exist_ok=True)
+    sources: list[dict] = []
 
     for distro in metadata.distributions:
         # Extension may be corrected later based on response headers.
@@ -156,6 +166,7 @@ def download_dataset_files(
 
         if not url:
             logger.warning(f"No URL found for distribution '{distro.title}'")
+            sources.append(_source("distribution", distro.title, "", "no_url"))
             continue
 
         if not distro.download_url:
@@ -168,16 +179,21 @@ def download_dataset_files(
         if verbose:
             logger.info(f"Downloading: {distro.title}")
 
-        try:
-            final_path = _download_file(url, temp_path, verbose=verbose)
-
-            if final_path.suffix in [".zip", ".tgz"] or final_path.name.endswith(
-                ".tar.gz"
-            ):
-                _extract_archive(final_path, dataset_dir)
-
-        except Exception as e:
-            logger.error(f"Failed to process distribution '{distro.title}': {e}")
+        sources.append(
+            _fetch_into(
+                dataset_dir,
+                url,
+                temp_path,
+                _source(
+                    "distribution",
+                    distro.title,
+                    url,
+                    "downloaded",
+                    access_url_fallback=not distro.download_url,
+                ),
+                verbose=verbose,
+            )
+        )
 
     for resource in metadata.related_resources:
         temp_path = dataset_dir / resource.get_filename()
@@ -185,17 +201,90 @@ def download_dataset_files(
         if verbose:
             logger.info(f"Downloading: {resource.title}")
 
-        try:
-            final_path = _download_file(
-                resource.download_url, temp_path, verbose=verbose
+        sources.append(
+            _fetch_into(
+                dataset_dir,
+                resource.download_url,
+                temp_path,
+                _source(f"resource:{resource.role}", resource.title, resource.download_url, "downloaded"),
+                verbose=verbose,
             )
+        )
 
-            if final_path.suffix in [".zip", ".tgz"] or final_path.name.endswith(
-                ".tar.gz"
-            ):
-                _extract_archive(final_path, dataset_dir)
-
-        except Exception as e:
-            logger.error(f"Failed to process related resource '{resource.title}': {e}")
-
+    _write_sources_manifest(dataset_dir, metadata.source_url, sources)
     return dataset_dir
+
+
+def _source(kind: str, title: str, url: str, status: str, **extra) -> dict:
+    return {"kind": kind, "title": title, "url": url, "status": status, **extra, "files": []}
+
+
+def _snapshot(directory: Path) -> dict[str, tuple[int, int]]:
+    return {
+        str(path.relative_to(directory)): (path.stat().st_size, path.stat().st_mtime_ns)
+        for path in directory.rglob("*")
+        if path.is_file()
+    }
+
+
+def _fetch_into(
+    dataset_dir: Path, url: str, temp_path: Path, source: dict, verbose: bool = False
+) -> dict:
+    """Download (and extract) one URL, recording the files it produced in ``source``."""
+    before = _snapshot(dataset_dir)
+    try:
+        final_path = _download_file(url, temp_path, verbose=verbose)
+        if final_path.suffix in {".html", ".htm"}:
+            # The server answered with a web page, not the advertised data.
+            source["status"] = "html_page"
+        if final_path.suffix in [".zip", ".tgz"] or final_path.name.endswith(".tar.gz"):
+            source["archive"] = final_path.name
+            _extract_archive(final_path, dataset_dir)
+    except Exception as e:
+        logger.error(f"Failed to process '{source['title']}': {e}")
+        source["status"] = "failed"
+        source["error"] = str(e.__cause__ or e)
+    after = _snapshot(dataset_dir)
+    # New or rewritten files belong to this source (an archive may overwrite).
+    source["files"] = sorted(name for name, state in after.items() if before.get(name) != state)
+    return source
+
+
+def _write_sources_manifest(dataset_dir: Path, record: str, sources: list[dict]) -> None:
+    owner: dict[str, int] = {}
+    for index, source in enumerate(sources):
+        for name in source["files"]:
+            owner[name] = index
+    for index, source in enumerate(sources):
+        # A later source that rewrote a file owns it.
+        source["files"] = [name for name in source["files"] if owner.get(name) == index]
+    files = {
+        name: {"source": index, "sha256": _sha256(dataset_dir / name)}
+        for name, index in sorted(owner.items())
+        if (dataset_dir / name).is_file()
+    }
+    manifest = {
+        "record": record,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "sources": sources,
+        "files": files,
+    }
+    (dataset_dir / SOURCES_MANIFEST).write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+
+
+def read_sources_manifest(dataset_dir: Path) -> Optional[dict]:
+    """Return a folder's sources manifest, or ``None`` if it was not downloaded by the hub."""
+    path = Path(dataset_dir) / SOURCES_MANIFEST
+    if not path.is_file():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()

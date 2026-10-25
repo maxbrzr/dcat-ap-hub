@@ -30,7 +30,7 @@ class DataProcessor(ABC):
         Args:
             data_dir: The dataset folder. Besides the raw files (possibly in
                 sub-folders extracted from archives) it holds the processor
-                script, ``dcat-metadata.jsonld``, and ``output_dir``; a
+                script, ``dcat-ap-metadata.jsonld``, and ``output_dir``; a
                 processor reads only the raw files it needs.
             output_dir: Directory to write ``train.csv`` and ``test.csv`` to.
         """
