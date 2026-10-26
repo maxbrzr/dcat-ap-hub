@@ -165,6 +165,35 @@ local = Dataset.from_directory("output/<example>/runs/<run>/data")
 local.process()
 ```
 
+### Portals That Require Signing In
+
+Some portals, such as `green.data.sdil.de`, redirect anonymous requests to a
+sign-in page (NextAuth with Keycloak). dcat-ap-hub then raises `LoginRequired`
+with what to configure. To let it sign in the way a browser does, list the
+portal and give a username and password in the environment or in a `.env`
+file (the nearest one in the working directory or a parent; keep it out of
+version control):
+
+```dotenv
+DCAT_AP_HUB_LOGIN_HOSTS=green.data.sdil.de
+DCAT_AP_HUB_USERNAME=your-username
+DCAT_AP_HUB_PASSWORD=your-password
+```
+
+The credentials are sent only for portals in `DCAT_AP_HUB_LOGIN_HOSTS`
+(comma-separated), only to the identity provider that portal redirects to, and
+only over HTTPS. One sign-in per portal is reused for the record, the saved
+metadata, and the downloads. Accounts that need a second factor (e.g. a
+one-time code) cannot sign in this way; `LoginFailed` says so.
+
+```python
+from dcat_ap_hub import Dataset
+
+url = "https://green.data.sdil.de/en/dataset/industrial-machine-predictive-maintenance/raw?format=.jsonld"
+ds = Dataset.from_url(url)
+files = ds.download(data_dir="./data")
+```
+
 ### Funding
 
 This project was developed using resources from the HammerHAI project, an EU co-funded AI Factory initiative operated by the High-Performance Computing Center Stuttgart and supported by the European Commission as well as German federal and state ministries. It is funded by the European High Performance Computing Joint Undertaking under Grant Agreement No. 101234027.

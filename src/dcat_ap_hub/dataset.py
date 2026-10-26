@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
-import requests
 
 from dcat_ap_hub.files.files import FileCollection, scan_directory
 from dcat_ap_hub.integrations.discovery import (
@@ -16,10 +15,11 @@ from dcat_ap_hub.integrations.discovery import (
 )
 from dcat_ap_hub.integrations.integrations import load_model as load_with_integration
 from dcat_ap_hub.integrations.models import BackendName, LoadOptions, ModelSource
+from dcat_ap_hub.metadata import auth
 from dcat_ap_hub.metadata.constants import METADATA_FILENAME
 from dcat_ap_hub.metadata.models import DatasetMetadata, Distribution
 from dcat_ap_hub.metadata.parsing import (
-    build_metadata_request_headers,
+    METADATA_HEADERS,
     fetch_and_parse,
     parse_local_file,
 )
@@ -198,9 +198,9 @@ class Dataset:
         try:
             if verbose:
                 print("Saving metadata for offline usage...")
-            response = requests.get(
+            response = auth.get(
                 self._meta.source_url,
-                headers=build_metadata_request_headers(),
+                headers=METADATA_HEADERS,
                 timeout=10,
             )
             if response.status_code == 200:

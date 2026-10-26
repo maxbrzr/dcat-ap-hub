@@ -1,10 +1,8 @@
 """JSON-LD parsing and metadata normalization utilities."""
 
 import json
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Union
-from urllib import request
 from urllib.parse import urljoin, urlparse
 
 from dcat_ap_hub.metadata.constants import (
@@ -17,6 +15,7 @@ from dcat_ap_hub.metadata.constants import (
     PROCESSOR_PROFILE_URI,
     SKLEARN_METADATA_PROFILE_URI,
 )
+from dcat_ap_hub.metadata import auth
 from dcat_ap_hub.metadata.models import DatasetMetadata, Distribution, RelatedResource
 from dcat_ap_hub.utils.logging import logger
 
@@ -276,52 +275,24 @@ def _parse_json_content(data: Dict, source_name: str) -> DatasetMetadata:
 
 
 JSONLD_ACCEPT_HEADER = "application/ld+json, application/json;q=0.9, */*;q=0.1"
-METADATA_BEARER_TOKEN_ENV = "DCAT_AP_HUB_METADATA_BEARER_TOKEN"
-
-
-def _load_env_var_from_dotenv(var_name: str, dotenv_path: Path = Path(".env")) -> str:
-    """Best-effort lookup of a variable from a local .env file."""
-    try:
-        if not dotenv_path.exists():
-            return ""
-        for line in dotenv_path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#") or "=" not in stripped:
-                continue
-            key, value = stripped.split("=", 1)
-            if key.strip() != var_name:
-                continue
-            value = value.strip()
-            if (
-                len(value) >= 2
-                and value[0] == value[-1]
-                and value[0] in {"'", '"'}
-            ):
-                value = value[1:-1]
-            return value
-    except Exception:
-        return ""
-    return ""
-
-
-def build_metadata_request_headers() -> dict[str, str]:
-    """Build metadata request headers with optional bearer auth from env/.env."""
-    headers = {"Accept": JSONLD_ACCEPT_HEADER}
-    token = os.getenv(METADATA_BEARER_TOKEN_ENV) or _load_env_var_from_dotenv(
-        METADATA_BEARER_TOKEN_ENV
-    )
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    return headers
+# Portals that need a login get it through ``auth``, not through headers.
+METADATA_HEADERS = {"Accept": JSONLD_ACCEPT_HEADER}
 
 
 def fetch_and_parse(url: str, verbose: bool = False) -> DatasetMetadata:
     """Fetch JSON-LD metadata from the web and parse it."""
     if verbose:
         logger.info(f"Fetching: {url}")
-    req = request.Request(url, headers=build_metadata_request_headers())
-    with request.urlopen(req) as response:
-        data = json.load(response)
+    response = auth.get(url, headers=METADATA_HEADERS)
+    response.raise_for_status()
+    try:
+        data = response.json()
+    except ValueError as exc:
+        content_type = response.headers.get("Content-Type", "unknown type")
+        raise ValueError(
+            f"{url} did not return JSON-LD metadata but {content_type} "
+            f"(final URL {response.url})."
+        ) from exc
     return _parse_json_content(data, url)
 
 

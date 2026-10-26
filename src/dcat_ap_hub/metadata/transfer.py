@@ -11,9 +11,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-import requests
 from tqdm import tqdm
 
+from dcat_ap_hub.metadata import auth
 from dcat_ap_hub.metadata.constants import SOURCES_MANIFEST
 from dcat_ap_hub.metadata.models import DatasetMetadata
 from dcat_ap_hub.utils.logging import logger
@@ -80,7 +80,7 @@ def _extract_archive(filepath: Path, target_dir: Path) -> None:
 def _download_file(url: str, dest_path: Path, verbose: bool = False) -> Path:
     """Download a file stream to disk and return the final output path."""
     try:
-        with requests.get(url, stream=True) as r:
+        with auth.get(url, stream=True) as r:
             r.raise_for_status()
 
             # Servers often send generic types (``application/octet-stream`` for
