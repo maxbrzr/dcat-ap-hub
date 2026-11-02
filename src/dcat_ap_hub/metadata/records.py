@@ -150,7 +150,7 @@ def ai_ready_record(
         raise ValueError("The raw record has no dcat:Dataset to derive from.")
     source_id = graph[position].get("@id") or raw_id
     if graph[position].get("@id"):
-        graph = _rename_references(graph, graph[position]["@id"], dataset_id)
+        graph = _rename_references(graph, graph[position]["@id"], dataset_id, prefixes)
     dataset = graph[position]
     dataset["@id"] = dataset_id
     if source_id:
@@ -177,16 +177,33 @@ def ai_ready_record(
     return document
 
 
-def _rename_references(value: Any, old: str, new: str) -> Any:
-    """Replace every ``@id`` equal to ``old`` with ``new``."""
+# Properties whose value is a web address, not a reference to a node. Kaggle
+# and Hugging Face use the landing page as the dataset IRI, so renaming these
+# would turn the landing page into "#dataset".
+_URL_PROPERTIES = frozenset(
+    {"dcat:landingPage", "dcat:accessURL", "dcat:downloadURL", "foaf:page", "foaf:homepage"}
+)
+
+
+def _rename_references(value: Any, old: str, new: str, prefixes: Dict[str, str]) -> Any:
+    """Replace every ``@id`` equal to ``old`` with ``new``, except in web-address properties."""
     if isinstance(value, list):
-        return [_rename_references(item, old, new) for item in value]
+        return [_rename_references(item, old, new, prefixes) for item in value]
     if isinstance(value, dict):
-        return {
-            key: (new if key == "@id" and item == old else _rename_references(item, old, new))
-            for key, item in value.items()
-        }
+        renamed = {}
+        for key, item in value.items():
+            if key == "@id":
+                renamed[key] = new if item == old else item
+            elif not key.startswith("@") and _normalized_key(key, prefixes) in _URL_PROPERTIES:
+                renamed[key] = item
+            else:
+                renamed[key] = _rename_references(item, old, new, prefixes)
+        return renamed
     return value
+
+
+def _normalized_key(key: str, prefixes: Dict[str, str]) -> str:
+    return next(iter(_normalize_node({key: None}, prefixes)))
 
 
 def _suffixed(title: Any, suffix: str) -> Any:

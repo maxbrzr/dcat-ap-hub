@@ -316,6 +316,26 @@ def test_ai_ready_record_is_its_own_dataset_derived_from_the_raw_one():
     assert raw["@graph"][0]["@id"] == "https://piveau.io/set/data/raw"
 
 
+def test_ai_ready_record_keeps_web_addresses_equal_to_the_dataset_iri():
+    from dcat_ap_hub import ai_ready_record
+
+    page = "https://www.kaggle.com/datasets/owner/data"
+    raw = {"@graph": [
+        {"@id": page, "@type": "dcat:Dataset", "dct:title": "Data",
+         "dcat:landingPage": {"@id": page}, "dcat:distribution": {"@id": f"{page}#archive"}},
+        {"@id": f"{page}#archive", "@type": "dcat:Distribution",
+         "http://www.w3.org/ns/dcat#accessURL": {"@id": page}},
+    ]}
+
+    document = ai_ready_record(raw)
+
+    dataset, distribution = document["@graph"]
+    assert dataset["@id"] == "#dataset"
+    assert dataset["dcat:landingPage"] == {"@id": page}
+    assert distribution["http://www.w3.org/ns/dcat#accessURL"] == {"@id": page}
+    assert dataset["prov:wasDerivedFrom"] == {"@id": page}
+
+
 def test_ai_ready_record_needs_a_dataset():
     from dcat_ap_hub import ai_ready_record
 
